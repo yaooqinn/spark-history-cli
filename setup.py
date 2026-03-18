@@ -7,7 +7,12 @@ setup(
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
     author="Apache Spark Contributors",
+    url="https://github.com/yaooqinn/spark-history-cli",
     license="Apache-2.0",
+    project_urls={
+        "Source": "https://github.com/yaooqinn/spark-history-cli",
+        "Issues": "https://github.com/yaooqinn/spark-history-cli/issues",
+    },
     packages=find_packages(),
     package_data={
         "spark_history_cli": ["skills/*.md"],
