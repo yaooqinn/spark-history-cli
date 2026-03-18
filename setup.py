@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="spark-history-cli",
-    version="1.0.0",
+    version="1.0.1",
     description="CLI for querying the Apache Spark History Server REST API",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",

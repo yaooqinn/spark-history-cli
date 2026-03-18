@@ -1,63 +1,64 @@
 ---
 name: "spark-history-cli"
-description: "CLI for querying the Apache Spark History Server REST API. List apps, jobs, stages, executors, SQL executions, and download event logs."
+description: "Query a running Apache Spark History Server from Copilot CLI. Use this whenever the user wants to inspect SHS applications, jobs, stages, executors, SQL executions, environment details, or event logs, especially when they mention Spark History Server, SHS, event log history, benchmark runs, or application IDs."
+compatibility: "Requires Python 3.10+, the spark-history-cli package, and network access to a running Spark History Server."
 ---
 
 # spark-history-cli
 
-CLI for querying the Apache Spark History Server REST API.
+Use this skill when the task is about exploring or debugging data exposed by a running Apache Spark History Server.
 
-## Prerequisites
+## Why use this skill
 
-- Python 3.10+
-- A running Spark History Server (default: http://localhost:18080)
+- It gives you a purpose-built CLI instead of scraping the Spark History Server web UI.
+- It wraps the REST API cleanly and already handles attempt-ID resolution for multi-attempt apps.
+- It supports `--json`, which makes downstream reasoning and comparisons much easier.
 
-## Installation
+## Workflow
+
+1. Prefer the CLI over raw REST calls.
+2. Prefer `--json` unless the user explicitly wants a human-formatted table.
+3. Use `--server <url>` or `SPARK_HISTORY_SERVER` to point at the right SHS. If the user does not specify one, assume `http://localhost:18080`.
+4. Start broad, then drill down:
+   - list applications
+   - choose the relevant app
+   - inspect jobs, stages, executors, SQL executions, environment, or logs
+5. If the user says "latest app", "recent run", or similar, list apps first and choose the most relevant recent application before continuing.
+6. If the CLI is unavailable, install it with `python -m pip install spark-history-cli` if tool permissions allow it.
+
+## Command patterns
 
 ```bash
-pip install spark-history-cli
+spark-history-cli --json --server http://localhost:18080 apps
+spark-history-cli --json --server http://localhost:18080 app <app-id>
+spark-history-cli --json --server http://localhost:18080 --app-id <app-id> jobs
+spark-history-cli --json --server http://localhost:18080 --app-id <app-id> stages
+spark-history-cli --json --server http://localhost:18080 --app-id <app-id> executors --all
+spark-history-cli --json --server http://localhost:18080 --app-id <app-id> sql
+spark-history-cli --json --server http://localhost:18080 --app-id <app-id> env
+spark-history-cli --server http://localhost:18080 --app-id <app-id> logs output.zip
 ```
 
-## Basic Usage
+If `spark-history-cli` is not on `PATH`, use:
 
 ```bash
-# REPL mode (interactive)
-spark-history-cli --server http://localhost:18080
-
-# One-shot commands
-spark-history-cli apps
-spark-history-cli --json apps --limit 10
-spark-history-cli app <app-id>
-spark-history-cli --app-id <id> jobs
-spark-history-cli --app-id <id> stages
-spark-history-cli --app-id <id> executors --all
-spark-history-cli --app-id <id> sql
-spark-history-cli --app-id <id> env
-spark-history-cli --app-id <id> logs output.zip
+python -m spark_history_cli --json apps
 ```
 
-## Command Groups
+## What to reach for
 
-| Command | Description |
-|---------|-------------|
-| `apps` | List applications (--status, --limit, --min-date, --max-date) |
-| `app <id>` | Show application details |
-| `jobs` | List jobs for current app (--status) |
-| `job <id>` | Show job details |
-| `stages` | List stages (--status) |
-| `stage <id>` | Show stage details (--attempt) |
-| `executors` | List executors (--all for dead executors) |
-| `sql [id]` | List or show SQL executions (--offset, --length) |
-| `rdds` | List cached RDDs |
-| `env` | Show app environment and Spark config |
-| `logs [path]` | Download event logs as ZIP |
-| `version` | Show Spark version |
+- `apps` for recent runs, durations, status, and picking candidates
+- `app <id>` for high-level details about one run
+- `jobs`, `job <id>` for job-level failures or progress
+- `stages`, `stage <id>` for task/stage bottlenecks
+- `executors --all` for executor churn or skew investigations
+- `sql` for SQL execution history and plan graph data
+- `env` for Spark config/runtime context
+- `logs` only when the user explicitly wants the event log archive saved locally
 
-## Agent-Specific Guidance
+## Practical guidance
 
-- Use `--json` flag on all commands for machine-readable JSON output
-- Use `--app-id` to set application context for subcommands
-- Use `--server` or `SPARK_HISTORY_SERVER` env var for server URL
-- REPL mode supports `use <app-id>` to set persistent app context
-- All timestamps are in UTC, durations in human-readable format
-- Error responses include HTTP status codes and descriptive messages
+- Preserve the user's server URL if they gave one explicitly.
+- Summarize findings after retrieving JSON; do not dump raw JSON unless the user asked for it.
+- Treat event logs and benchmark history as potentially sensitive. Download them only when necessary and keep them local.
+- This CLI needs a running Spark History Server. It does not replace SHS and it does not parse raw event logs directly.

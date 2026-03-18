@@ -19,6 +19,32 @@ cd spark-history-cli
 pip install -e .
 ```
 
+Or install from PyPI:
+
+```bash
+pip install spark-history-cli
+```
+
+### Install as a Copilot CLI skill
+
+```bash
+spark-history-cli install-skill
+```
+
+This installs the bundled skill to `~/.copilot/skills/spark-history-cli`.
+
+If Copilot CLI is already running, reload skills with:
+
+```text
+/skills reload
+```
+
+Then verify with `/skills list` and invoke it with prompts like:
+
+```text
+Use /spark-history-cli to inspect the latest completed SHS application.
+```
+
 ## Usage
 
 ### REPL Mode (default)

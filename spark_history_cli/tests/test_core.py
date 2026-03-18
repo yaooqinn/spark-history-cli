@@ -414,7 +414,7 @@ class TestCLISubprocess:
     def test_version(self):
         result = self._run(["--version"])
         assert result.returncode == 0
-        assert "1.0.0" in result.stdout
+        assert "1.0.1" in result.stdout
 
     def test_apps_no_server(self):
         """When no server is running, should fail gracefully."""
@@ -424,3 +424,11 @@ class TestCLISubprocess:
         )
         # Should exit with error (non-zero) when no server
         assert result.returncode != 0 or "error" in result.stderr.lower() or "Cannot connect" in result.stderr
+
+    def test_install_skill(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target = os.path.join(tmpdir, "spark-history-cli")
+            result = self._run(["install-skill", "--target-dir", target])
+            assert result.returncode == 0
+            assert os.path.exists(os.path.join(target, "SKILL.md"))
+            assert "Installed Copilot skill" in result.stdout

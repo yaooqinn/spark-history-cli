@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
 import click
@@ -17,6 +18,7 @@ from spark_history_cli import __version__
 from spark_history_cli.core.client import SparkHistoryClient, HistoryServerError
 from spark_history_cli.core.session import Session
 from spark_history_cli.core import formatters as fmt
+from spark_history_cli.utils.skill_install import default_skill_target, install_copilot_skill
 
 
 # ── Shared state via Click context ────────────────────────────────────
@@ -547,6 +549,54 @@ def cmd_logs(state: CliState, output_path: str | None):
         output_json({"output": path, "app_id": app_id})
     else:
         click.echo(f"Event logs saved to {path}")
+
+
+@cli.command("install-skill")
+@click.option(
+    "--scope",
+    type=click.Choice(["user", "repo"], case_sensitive=False),
+    default="user",
+    show_default=True,
+    help="Install as a personal skill (~/.copilot/skills) or repository skill (.github/skills).",
+)
+@click.option(
+    "--target-dir",
+    type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
+    default=None,
+    help="Install to a specific skill directory instead of the default location.",
+)
+@click.option("--force", is_flag=True, help="Overwrite an existing skill directory.")
+@pass_state
+def cmd_install_skill(
+    state: CliState,
+    scope: str,
+    target_dir: Path | None,
+    force: bool,
+):
+    """Install the bundled Copilot skill."""
+    destination = target_dir or default_skill_target(scope)
+    try:
+        installed_path = install_copilot_skill(destination, force=force)
+    except FileExistsError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    result = {
+        "name": "spark-history-cli",
+        "installed_to": str(installed_path),
+        "scope": scope,
+        "next_steps": [
+            "Run /skills reload in Copilot CLI if it is already open.",
+            "Verify with /skills list or /skills info spark-history-cli.",
+            "Use it with prompts like 'Use /spark-history-cli to inspect my latest SHS app'.",
+        ],
+    }
+    if state.json_mode:
+        output_json(result)
+    else:
+        click.echo(f"Installed Copilot skill to {installed_path}")
+        click.echo("Next steps:")
+        for step in result["next_steps"]:
+            click.echo(f"  - {step}")
 
 
 # ── Entry point ───────────────────────────────────────────────────────
