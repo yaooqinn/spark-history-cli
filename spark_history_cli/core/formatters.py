@@ -115,6 +115,91 @@ def format_app_detail(app: dict) -> dict[str, str]:
     return info
 
 
+def format_summary(
+    app: dict,
+    env: dict,
+    jobs: list[dict],
+    stages: list[dict],
+    executors: list[dict],
+    sqls: list[dict],
+) -> dict[str, dict[str, str]]:
+    """Build a multi-section summary from several API responses.
+
+    Returns an ordered dict of {section_title: {key: value}} pairs.
+    """
+    from collections import Counter
+
+    attempts = app.get("attempts", [])
+    latest = attempts[0] if attempts else {}
+    status = "RUNNING" if not latest.get("completed", True) else "COMPLETED"
+    runtime = env.get("runtime", {})
+    sp = dict(env.get("sparkProperties", []))
+
+    # ── Application ──
+    application = {
+        "App ID": app.get("id", ""),
+        "Name": app.get("name", ""),
+        "Status": f"{_status_icon(status)} {status}",
+        "Duration": _duration(latest.get("duration")),
+        "Spark Version": (
+            f"{latest.get('appSparkVersion', 'N/A')}  "
+            f"(Scala {runtime.get('scalaVersion', 'N/A').replace('version ', '')}, "
+            f"Java {runtime.get('javaVersion', 'N/A')})"
+        ),
+        "Master": sp.get("spark.master", "N/A"),
+        "User": latest.get("sparkUser", ""),
+        "Started": _ts(latest.get("startTimeEpoch")),
+        "Ended": _ts(latest.get("endTimeEpoch")),
+    }
+
+    # ── Resources ──
+    driver_mem = sp.get("spark.driver.memory", "N/A")
+    driver_cores = sp.get("spark.driver.cores", "N/A")
+    exec_mem = sp.get("spark.executor.memory", "N/A")
+    exec_cores = sp.get("spark.executor.cores", "N/A")
+    exec_instances = sp.get("spark.executor.instances", "N/A")
+    active_execs = sum(1 for e in executors if e.get("isActive"))
+    total_execs = len(executors)
+    dyn_alloc = sp.get("spark.dynamicAllocation.enabled", "false")
+
+    resources = {
+        "Driver": f"{driver_mem} / {driver_cores} cores",
+        "Executors": f"{exec_instances} × {exec_mem} / {exec_cores} cores ({total_execs} total, {active_execs} active)",
+        "Dynamic Allocation": dyn_alloc,
+        "Shuffle Partitions": sp.get("spark.sql.shuffle.partitions", "200"),
+        "Serializer": sp.get("spark.serializer", "JavaSerializer").rsplit(".", 1)[-1],
+    }
+
+    # ── Workload ──
+    job_statuses = Counter(j.get("status", "UNKNOWN") for j in jobs)
+    stage_statuses = Counter(s.get("status", "UNKNOWN") for s in stages)
+    sql_statuses = Counter(s.get("status", "UNKNOWN") for s in sqls)
+
+    total_tasks = sum(j.get("numTasks", 0) for j in jobs)
+    completed_tasks = sum(j.get("numCompletedTasks", 0) for j in jobs)
+
+    def _status_summary(counts: Counter) -> str:
+        total = sum(counts.values())
+        parts = []
+        for s in ["SUCCEEDED", "COMPLETED", "COMPLETE", "RUNNING", "FAILED", "SKIPPED", "KILLED", "PENDING", "UNKNOWN"]:
+            if counts.get(s):
+                parts.append(f"{counts[s]} {s.lower()}")
+        return f"{total} ({', '.join(parts)})" if parts else str(total)
+
+    workload = {
+        "Jobs": _status_summary(job_statuses),
+        "Stages": _status_summary(stage_statuses),
+        "Tasks": f"{completed_tasks:,}/{total_tasks:,} completed",
+        "SQL Executions": _status_summary(sql_statuses),
+    }
+
+    return {
+        "Application": application,
+        "Resources": resources,
+        "Workload": workload,
+    }
+
+
 # ── Job Formatters ────────────────────────────────────────────────────
 
 

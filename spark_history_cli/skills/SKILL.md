@@ -38,6 +38,7 @@ spark-history-cli --json --server http://localhost:18080 --app-id <app-id> sql
 spark-history-cli --json --server http://localhost:18080 --app-id <app-id> sql-plan <exec-id> --view final
 spark-history-cli --server http://localhost:18080 --app-id <app-id> sql-plan <exec-id> --dot -o plan.dot
 spark-history-cli --json --server http://localhost:18080 --app-id <app-id> sql-jobs <exec-id>
+spark-history-cli --json --server http://localhost:18080 --app-id <app-id> summary
 spark-history-cli --json --server http://localhost:18080 --app-id <app-id> env
 spark-history-cli --server http://localhost:18080 --app-id <app-id> logs output.zip
 ```
@@ -64,6 +65,7 @@ python -m spark_history_cli --json apps
   - `--json` + `--view`: structured JSON with `isAdaptive`, `sectionCount`, `plan`, and `sections`
   - `-o <file>`: write output to file instead of stdout
 - `sql-jobs <id>` for jobs associated with a SQL execution (fetches all linked jobs by ID)
+- `summary` for a concise application overview: app info, resource config (driver/executor/shuffle), and workload stats (jobs/stages/tasks/SQL)
 - `env` for Spark config/runtime context
 - `logs` only when the user explicitly wants the event log archive saved locally
 

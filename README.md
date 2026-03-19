@@ -71,6 +71,7 @@ spark-history-cli --app-id <id> stages
 spark-history-cli --app-id <id> executors --all
 spark-history-cli --app-id <id> sql
 spark-history-cli --app-id <id> env
+spark-history-cli --app-id <id> summary
 
 # SQL execution plans
 spark-history-cli --app-id <id> sql-plan <exec-id>                # full plan
@@ -106,6 +107,7 @@ executors [--all]       List executors
 sql [id]                List or show SQL executions
 sql-plan <id> [opts]    Show SQL plan (--view, --dot, -o)
 sql-jobs <id>           Show jobs for a SQL execution
+summary                 Application overview (config + workload)
 rdds                    List cached RDDs
 env                     Show environment/config
 logs [path]             Download event logs

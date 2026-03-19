@@ -241,6 +241,18 @@ def repl(state: CliState):
                     output_status_block(skin, info, title="Application")
                     skin.hint(f"Context set to {app_id}")
 
+            elif cmd == "summary":
+                app_id = state.resolve_app_id(None)
+                app = client.get_application(app_id)
+                env = client.get_environment(app_id)
+                jobs = client.list_jobs(app_id)
+                stages = client.list_stages(app_id)
+                executors = client.list_all_executors(app_id)
+                sqls = client.list_sql(app_id, length=100000)
+                sections = fmt.format_summary(app, env, jobs, stages, executors, sqls)
+                for title, info in sections.items():
+                    output_status_block(skin, info, title=title)
+
             elif cmd == "jobs":
                 app_id = state.resolve_app_id(args[0] if args else None)
                 status_filter = None
@@ -440,6 +452,39 @@ def cmd_app(state: CliState, app_id: str):
         skin = ReplSkin("spark_history", version=__version__)
         info = fmt.format_app_detail(app)
         output_status_block(skin, info, title="Application")
+
+
+@cli.command("summary")
+@pass_state
+def cmd_summary(state: CliState):
+    """Show a concise summary of an application.
+
+    Aggregates application details, resource config, and workload stats
+    into a single overview.
+
+    Examples:
+
+      spark-history-cli -a <app> summary
+
+      spark-history-cli -a <app> --json summary
+    """
+    client = state.ensure_client()
+    app_id = state.resolve_app_id(None)
+    app = client.get_application(app_id)
+    env = client.get_environment(app_id)
+    jobs = client.list_jobs(app_id)
+    stages = client.list_stages(app_id)
+    executors = client.list_all_executors(app_id)
+    sqls = client.list_sql(app_id, length=100000)
+    if state.json_mode:
+        sections = fmt.format_summary(app, env, jobs, stages, executors, sqls)
+        output_json(sections)
+    else:
+        from spark_history_cli.utils.repl_skin import ReplSkin
+        skin = ReplSkin("spark_history", version=__version__)
+        sections = fmt.format_summary(app, env, jobs, stages, executors, sqls)
+        for title, info in sections.items():
+            output_status_block(skin, info, title=title)
 
 
 @cli.command("jobs")
