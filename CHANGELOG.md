@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.0] - 2025-03-19
+
+### Added
+- **`sql-jobs` command** — Show jobs associated with a SQL execution.
+  - Fetches all job IDs (succeeded, failed, running) from the SQL execution.
+  - Uses bulk `list_jobs` + client-side filter for efficiency.
+  - Gracefully handles missing job IDs (e.g., Gluten/Velox native engine apps).
+- **`summary` command** — Concise application overview in a single view.
+  - Application info: name, status, duration, Spark version, master, user.
+  - Resource config: driver/executor memory & cores, shuffle partitions, serializer.
+  - Workload stats: jobs, stages, tasks, SQL executions with status breakdowns.
+- `sql-jobs` and `summary` REPL commands.
+
 ## [1.1.0] - 2025-03-19
 
 ### Added
