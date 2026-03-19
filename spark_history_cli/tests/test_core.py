@@ -412,9 +412,10 @@ class TestCLISubprocess:
         assert "Spark History Server" in result.stdout
 
     def test_version(self):
+        from spark_history_cli import __version__
         result = self._run(["--version"])
         assert result.returncode == 0
-        assert "1.0.1" in result.stdout
+        assert __version__ in result.stdout
 
     def test_apps_no_server(self):
         """When no server is running, should fail gracefully."""
