@@ -13,10 +13,12 @@ import tempfile
 from unittest.mock import patch, MagicMock
 
 import pytest
+from click.testing import CliRunner
 
 from spark_history_cli.core.client import SparkHistoryClient, HistoryServerError
 from spark_history_cli.core.session import Session
 from spark_history_cli.core import formatters as fmt
+from spark_history_cli.cli import cli
 
 
 # ── Sample API Responses ──────────────────────────────────────────────
@@ -227,6 +229,14 @@ class TestClient:
             client.get_version()
         assert "Cannot connect" in str(exc_info.value)
 
+    def test_basic_auth_is_configured(self):
+        client = SparkHistoryClient(
+            "http://test:18080",
+            basic_auth_username="alice",
+            basic_auth_password="secret",
+        )
+        assert client._session.auth == ("alice", "secret")
+
     def test_http_404(self):
         client = self._mock_client({"message": "not found"}, status_code=404)
         with pytest.raises(HistoryServerError) as exc_info:
@@ -433,3 +443,29 @@ class TestCLISubprocess:
             assert result.returncode == 0
             assert os.path.exists(os.path.join(target, "SKILL.md"))
             assert "Installed Copilot skill" in result.stdout
+
+
+class TestCLIOptions:
+    def test_basic_auth_options_are_accepted(self):
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["--basic-auth-user", "alice", "--basic-auth-password", "secret", "--help"],
+        )
+        assert result.exit_code == 0
+
+    def test_basic_auth_password_requires_user(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--basic-auth-password", "secret", "apps"])
+        assert result.exit_code != 0
+        assert "--basic-auth-password requires --basic-auth-user" in result.output
+
+    def test_basic_auth_user_prompts_for_password_hidden(self):
+        runner = CliRunner()
+        mock_client = MagicMock()
+        mock_client.get_version.return_value = {"spark": "4.0.0"}
+        with patch("spark_history_cli.cli.click.prompt", return_value="secret") as prompt_mock:
+            with patch("spark_history_cli.cli.CliState.ensure_client", return_value=mock_client):
+                result = runner.invoke(cli, ["--basic-auth-user", "alice", "version"])
+        assert result.exit_code == 0
+        prompt_mock.assert_called_once_with("Basic Auth password", hide_input=True)
