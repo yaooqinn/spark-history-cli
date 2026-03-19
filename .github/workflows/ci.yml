@@ -31,8 +31,10 @@ jobs:
           python -m pytest spark_history_cli/tests/test_core.py -v --tb=short
 
   e2e-tests:
-    name: E2E Tests (with Spark History Server)
+    name: E2E Tests (Docker SHS)
     runs-on: ubuntu-latest
+    env:
+      SPARK_IMAGE: apache/spark:4.0.0
     steps:
       - uses: actions/checkout@v4
 
@@ -41,23 +43,22 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
+      - name: Cache Docker image
+        id: docker-cache
+        uses: actions/cache@v4
         with:
-          distribution: temurin
-          java-version: 17
+          path: /tmp/spark-docker-image.tar
+          key: spark-docker-${{ env.SPARK_IMAGE }}
 
-      - name: Download and set up Apache Spark
+      - name: Load cached Docker image
+        if: steps.docker-cache.outputs.cache-hit == 'true'
+        run: docker load -i /tmp/spark-docker-image.tar
+
+      - name: Pull and save Docker image
+        if: steps.docker-cache.outputs.cache-hit != 'true'
         run: |
-          SPARK_VERSION="4.0.0"
-          SPARK_HADOOP="spark-${SPARK_VERSION}-bin-hadoop3"
-          SPARK_URL="https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/${SPARK_HADOOP}.tgz"
-
-          echo "Downloading Spark ${SPARK_VERSION}..."
-          curl -sL "${SPARK_URL}" | tar xz -C /opt
-          echo "SPARK_HOME=/opt/${SPARK_HADOOP}" >> $GITHUB_ENV
-          echo "/opt/${SPARK_HADOOP}/bin" >> $GITHUB_PATH
-          echo "/opt/${SPARK_HADOOP}/sbin" >> $GITHUB_PATH
+          docker pull ${{ env.SPARK_IMAGE }}
+          docker save ${{ env.SPARK_IMAGE }} -o /tmp/spark-docker-image.tar
 
       - name: Generate sample event logs
         run: |
@@ -66,10 +67,14 @@ jobs:
         env:
           SPARK_EVENT_LOG_DIR: /tmp/spark-events
 
-      - name: Start Spark History Server
+      - name: Start Spark History Server (Docker)
         run: |
-          export SPARK_HISTORY_OPTS="-Dspark.history.fs.logDirectory=/tmp/spark-events"
-          $SPARK_HOME/sbin/start-history-server.sh
+          docker run -d --name spark-history-server \
+            -p 18080:18080 \
+            -v /tmp/spark-events:/tmp/spark-events \
+            -e SPARK_HISTORY_OPTS="-Dspark.history.fs.logDirectory=/tmp/spark-events" \
+            ${{ env.SPARK_IMAGE }} \
+            /opt/spark/bin/spark-class org.apache.spark.deploy.history.HistoryServer
 
           # Wait for SHS to be ready (up to 30s)
           echo "Waiting for History Server to start..."
@@ -82,7 +87,7 @@ jobs:
             sleep 1
           done
 
-          # Verify apps are loaded (may take a few seconds for SHS to scan logs)
+          # Verify apps are loaded
           echo "Waiting for apps to be indexed..."
           for i in $(seq 1 30); do
             APPS=$(curl -sf http://localhost:18080/api/v1/applications 2>/dev/null | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
@@ -107,4 +112,5 @@ jobs:
       - name: Stop History Server
         if: always()
         run: |
-          $SPARK_HOME/sbin/stop-history-server.sh || true
+          docker stop spark-history-server || true
+          docker rm spark-history-server || true
