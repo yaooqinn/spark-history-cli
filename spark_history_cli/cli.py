@@ -61,6 +61,25 @@ def output_status_block(skin, info: dict[str, str], title: str = ""):
     skin.status_block(info, title=title)
 
 
+def _collect_sql_job_ids(sql_exec: dict) -> list[int]:
+    """Collect all job IDs from a SQL execution (success + failed + running)."""
+    ids = []
+    ids.extend(sql_exec.get("successJobIds", []))
+    ids.extend(sql_exec.get("failedJobIds", []))
+    ids.extend(sql_exec.get("runningJobIds", []))
+    return sorted(set(ids))
+
+
+def _fetch_sql_jobs(client, app_id: str, sql_exec: dict) -> list[dict]:
+    """Fetch job details for a SQL execution using bulk list + filter."""
+    job_ids = _collect_sql_job_ids(sql_exec)
+    if not job_ids:
+        return []
+    target = set(job_ids)
+    all_jobs = client.list_jobs(app_id)
+    return [j for j in all_jobs if j.get("jobId") in target]
+
+
 # ── Main CLI group ────────────────────────────────────────────────────
 
 @click.group(invoke_without_command=True)
@@ -320,6 +339,25 @@ def repl(state: CliState):
                             click.echo(parsed["finalPlan"])
                         else:
                             click.echo(parsed["fullPlan"])
+
+            elif cmd == "sql-jobs":
+                app_id = state.resolve_app_id(None)
+                if not args or not args[0].isdigit():
+                    skin.error("Usage: sql-jobs <execution-id>")
+                else:
+                    exec_id = int(args[0])
+                    ex = client.get_sql(app_id, exec_id)
+                    job_ids = _collect_sql_job_ids(ex)
+                    if not job_ids:
+                        skin.warning(f"No jobs found for SQL execution {exec_id}")
+                    else:
+                        jobs = _fetch_sql_jobs(client, app_id, ex)
+                        if not jobs:
+                            skin.warning(f"SQL execution {exec_id} references jobs {job_ids} but none were found")
+                        else:
+                            skin.section(f"Jobs for SQL Execution {exec_id} ({len(jobs)}/{len(job_ids)} jobs)")
+                            headers, rows = fmt.format_job_list(jobs)
+                            output_table(skin, headers, rows)
 
             elif cmd == "rdds":
                 app_id = state.resolve_app_id(None)
@@ -596,6 +634,42 @@ def cmd_sql_plan(state: CliState, execution_id: int, view_mode: str, dot_mode: b
             click.echo(f"Plan written to {output_file}")
         else:
             click.echo(text)
+
+
+@cli.command("sql-jobs")
+@click.argument("execution_id", type=int)
+@pass_state
+def cmd_sql_jobs(state: CliState, execution_id: int):
+    """Show jobs associated with a SQL execution.
+
+    Fetches the SQL execution, collects all job IDs (succeeded, failed,
+    running), and displays each job's details.
+
+    Examples:
+
+      spark-history-cli -a <app> sql-jobs 4
+
+      spark-history-cli -a <app> --json sql-jobs 4
+    """
+    client = state.ensure_client()
+    app_id = state.resolve_app_id(None)
+    ex = client.get_sql(app_id, execution_id)
+    job_ids = _collect_sql_job_ids(ex)
+    if not job_ids:
+        click.echo(f"No jobs found for SQL execution {execution_id}.")
+        return
+    jobs = _fetch_sql_jobs(client, app_id, ex)
+    if not jobs:
+        click.echo(f"SQL execution {execution_id} references jobs {job_ids} but none were found.")
+        return
+    if state.json_mode:
+        output_json(jobs)
+    else:
+        from spark_history_cli.utils.repl_skin import ReplSkin
+        skin = ReplSkin("spark_history", version=__version__)
+        skin.section(f"Jobs for SQL Execution {execution_id} ({len(jobs)}/{len(job_ids)} jobs)")
+        headers, rows = fmt.format_job_list(jobs)
+        output_table(skin, headers, rows)
 
 
 @cli.command("rdds")

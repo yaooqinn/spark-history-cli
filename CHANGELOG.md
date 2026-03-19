@@ -10,7 +10,11 @@
   - `--dot` outputs the plan DAG as a Graphviz DOT file for visualization.
   - `-o <file>` writes output to a file instead of stdout.
   - `--json` returns structured JSON with `isAdaptive`, `sectionCount`, and parsed `sections`.
-- `sql-plan` REPL command with the same options.
+- **`sql-jobs` command** — Show jobs associated with a SQL execution.
+  - Fetches all job IDs (succeeded, failed, running) from the SQL execution.
+  - Displays job details in a table with status, stages, and task counts.
+  - Gracefully handles cases where referenced job IDs are not found.
+- `sql-plan` and `sql-jobs` REPL commands with the same options.
 
 ### Changed
 - **E2E CI switched to Docker-based SHS** — Uses `apache/spark:4.0.0` Docker image with `actions/cache` for faster CI runs (~5s cached load vs ~2min download).
