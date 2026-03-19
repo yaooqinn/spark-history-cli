@@ -290,6 +290,91 @@ def format_rdd_list(rdds: list[dict]) -> tuple[list[str], list[list[str]]]:
     return headers, rows
 
 
+# ── SQL Plan Formatters ───────────────────────────────────────────────
+
+
+def parse_plan_sections(plan_text: str) -> dict:
+    """Parse a planDescription into structured sections.
+
+    Returns a dict with keys: fullPlan, initialPlan, finalPlan, sections, isAdaptive.
+    """
+    if not plan_text:
+        return {
+            "fullPlan": "",
+            "initialPlan": "",
+            "finalPlan": "",
+            "sections": [],
+            "isAdaptive": False,
+        }
+
+    import re
+    lines = plan_text.split("\n")
+    sections: list[dict] = []
+    current_kind: str | None = None
+    current_lines: list[str] = []
+    initial_ordinal = 0
+    final_ordinal = 0
+
+    for line in lines:
+        if re.match(r"^\+?-?\s*==\s*Initial Plan\s*==", line):
+            if current_kind and current_lines:
+                sections.append({"kind": current_kind, "ordinal": initial_ordinal if current_kind == "initial" else final_ordinal, "text": "\n".join(current_lines)})
+            initial_ordinal += 1
+            current_kind = "initial"
+            current_lines = [line]
+        elif re.match(r"^\+?-?\s*==\s*Final Plan\s*==", line):
+            if current_kind and current_lines:
+                sections.append({"kind": current_kind, "ordinal": initial_ordinal if current_kind == "initial" else final_ordinal, "text": "\n".join(current_lines)})
+            final_ordinal += 1
+            current_kind = "final"
+            current_lines = [line]
+        elif current_kind:
+            current_lines.append(line)
+
+    if current_kind and current_lines:
+        sections.append({"kind": current_kind, "ordinal": initial_ordinal if current_kind == "initial" else final_ordinal, "text": "\n".join(current_lines)})
+
+    is_adaptive = any(s["kind"] == "initial" for s in sections) or any(s["kind"] == "final" for s in sections)
+
+    initial_texts = [s["text"] for s in sections if s["kind"] == "initial"]
+    final_texts = [s["text"] for s in sections if s["kind"] == "final"]
+
+    return {
+        "fullPlan": plan_text,
+        "initialPlan": "\n\n".join(initial_texts) if initial_texts else plan_text,
+        "finalPlan": "\n\n".join(final_texts) if final_texts else plan_text,
+        "sections": sections,
+        "isAdaptive": is_adaptive,
+    }
+
+
+def plan_to_dot(nodes: list[dict], edges: list[dict],
+                graph_name: str = "SparkPlan") -> str:
+    """Convert SHS SQL nodes/edges into a Graphviz DOT string."""
+    lines = [f'digraph "{graph_name}" {{']
+    lines.append('  rankdir=TB;')
+    lines.append('  node [shape=box, style="rounded,filled", fillcolor="#e8f4fd", fontname="Helvetica", fontsize=10];')
+    lines.append('  edge [color="#666666"];')
+    lines.append("")
+
+    for node in nodes:
+        nid = node.get("nodeId", 0)
+        name = node.get("nodeName", f"node_{nid}")
+        # Escape quotes
+        label = name.replace('"', '\\"')
+        # Truncate very long labels
+        if len(label) > 80:
+            label = label[:77] + "..."
+        lines.append(f'  n{nid} [label="{label} (#{nid})"];')
+
+    lines.append("")
+    for edge in edges:
+        lines.append(f'  n{edge["fromId"]} -> n{edge["toId"]};')
+
+    lines.append("}")
+    return "\n".join(lines)
+
+
 # ── Environment Formatters ────────────────────────────────────────────
 
 

@@ -118,6 +118,7 @@ def repl(state: CliState):
         "executors": "List executors for current app",
         "sql": "List SQL executions for current app",
         "sql <id>": "Show SQL execution details",
+        "sql-plan <id>": "Show SQL plan (--view initial|final|full, --dot for Graphviz)",
         "rdds": "List cached RDDs for current app",
         "env": "Show application environment",
         "logs <path>": "Download event logs to file",
@@ -291,6 +292,34 @@ def repl(state: CliState):
                     sqls = client.list_sql(app_id)
                     headers, rows = fmt.format_sql_list(sqls)
                     output_table(skin, headers, rows)
+
+            elif cmd == "sql-plan":
+                app_id = state.resolve_app_id(None)
+                if not args or not args[0].isdigit():
+                    skin.error("Usage: sql-plan <execution-id> [--view initial|final|full] [--dot]")
+                else:
+                    exec_id = int(args[0])
+                    view = "full"
+                    dot_mode = "--dot" in args
+                    for i, a in enumerate(args[1:], 1):
+                        if a == "--view" and i + 1 < len(args):
+                            view = args[i + 1]
+                    ex = client.get_sql(app_id, exec_id)
+                    if dot_mode:
+                        dot = fmt.plan_to_dot(
+                            ex.get("nodes", []),
+                            ex.get("edges", []),
+                            graph_name=f"SQL {exec_id}",
+                        )
+                        click.echo(dot)
+                    else:
+                        parsed = fmt.parse_plan_sections(ex.get("planDescription", ""))
+                        if view == "initial":
+                            click.echo(parsed["initialPlan"])
+                        elif view == "final":
+                            click.echo(parsed["finalPlan"])
+                        else:
+                            click.echo(parsed["fullPlan"])
 
             elif cmd == "rdds":
                 app_id = state.resolve_app_id(None)
@@ -499,6 +528,74 @@ def cmd_sql(state: CliState, execution_id: int | None, offset: int, length: int)
             skin = ReplSkin("spark_history", version=__version__)
             headers, rows = fmt.format_sql_list(data)
             output_table(skin, headers, rows)
+
+
+@cli.command("sql-plan")
+@click.argument("execution_id", type=int)
+@click.option("--view", "view_mode", type=click.Choice(["full", "initial", "final"], case_sensitive=False),
+              default="full", show_default=True, help="Which plan view to show.")
+@click.option("--dot", "dot_mode", is_flag=True, default=False,
+              help="Output as Graphviz DOT instead of text plan.")
+@click.option("--output", "-o", "output_file", default=None,
+              help="Write output to a file instead of stdout.")
+@pass_state
+def cmd_sql_plan(state: CliState, execution_id: int, view_mode: str, dot_mode: bool, output_file: str | None):
+    """Show SQL execution plan (text or Graphviz DOT).
+
+    Examples:
+
+      spark-history-cli -a <app> sql-plan 4 --view final
+
+      spark-history-cli -a <app> sql-plan 4 --dot -o plan.dot
+
+      spark-history-cli -a <app> --json sql-plan 4
+    """
+    client = state.ensure_client()
+    app_id = state.resolve_app_id(None)
+    ex = client.get_sql(app_id, execution_id)
+
+    if dot_mode:
+        content = fmt.plan_to_dot(
+            ex.get("nodes", []),
+            ex.get("edges", []),
+            graph_name=f"SQL {execution_id}",
+        )
+        if output_file:
+            Path(output_file).write_text(content, encoding="utf-8")
+            click.echo(f"DOT file written to {output_file}")
+        else:
+            click.echo(content)
+        return
+
+    parsed = fmt.parse_plan_sections(ex.get("planDescription", ""))
+
+    if state.json_mode:
+        result = {
+            "executionId": execution_id,
+            "isAdaptive": parsed["isAdaptive"],
+            "sectionCount": len(parsed["sections"]),
+        }
+        if view_mode == "initial":
+            result["plan"] = parsed["initialPlan"]
+        elif view_mode == "final":
+            result["plan"] = parsed["finalPlan"]
+        else:
+            result["plan"] = parsed["fullPlan"]
+            result["sections"] = parsed["sections"]
+        output_json(result)
+    else:
+        if view_mode == "initial":
+            text = parsed["initialPlan"]
+        elif view_mode == "final":
+            text = parsed["finalPlan"]
+        else:
+            text = parsed["fullPlan"]
+
+        if output_file:
+            Path(output_file).write_text(text, encoding="utf-8")
+            click.echo(f"Plan written to {output_file}")
+        else:
+            click.echo(text)
 
 
 @cli.command("rdds")

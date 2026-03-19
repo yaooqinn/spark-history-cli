@@ -35,6 +35,8 @@ spark-history-cli --json --server http://localhost:18080 --app-id <app-id> jobs
 spark-history-cli --json --server http://localhost:18080 --app-id <app-id> stages
 spark-history-cli --json --server http://localhost:18080 --app-id <app-id> executors --all
 spark-history-cli --json --server http://localhost:18080 --app-id <app-id> sql
+spark-history-cli --json --server http://localhost:18080 --app-id <app-id> sql-plan <exec-id> --view final
+spark-history-cli --server http://localhost:18080 --app-id <app-id> sql-plan <exec-id> --dot -o plan.dot
 spark-history-cli --json --server http://localhost:18080 --app-id <app-id> env
 spark-history-cli --server http://localhost:18080 --app-id <app-id> logs output.zip
 ```
@@ -53,6 +55,13 @@ python -m spark_history_cli --json apps
 - `stages`, `stage <id>` for task/stage bottlenecks
 - `executors --all` for executor churn or skew investigations
 - `sql` for SQL execution history and plan graph data
+- `sql-plan <id>` for SQL plan extraction:
+  - `--view full` (default): full plan text
+  - `--view initial`: only the Initial Plan (pre-AQE)
+  - `--view final`: only the Final Plan (post-AQE)
+  - `--dot`: Graphviz DOT output for visualizing the plan DAG
+  - `--json` + `--view`: structured JSON with `isAdaptive`, `sectionCount`, `plan`, and `sections`
+  - `-o <file>`: write output to file instead of stdout
 - `env` for Spark config/runtime context
 - `logs` only when the user explicitly wants the event log archive saved locally
 
