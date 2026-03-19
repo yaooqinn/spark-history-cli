@@ -72,12 +72,20 @@ spark-history-cli --app-id <id> executors --all
 spark-history-cli --app-id <id> sql
 spark-history-cli --app-id <id> env
 
+# SQL execution plans
+spark-history-cli --app-id <id> sql-plan <exec-id>                # full plan
+spark-history-cli --app-id <id> sql-plan <exec-id> --view initial # pre-AQE plan
+spark-history-cli --app-id <id> sql-plan <exec-id> --view final   # post-AQE plan
+spark-history-cli --app-id <id> sql-plan <exec-id> --dot          # Graphviz DOT
+spark-history-cli --app-id <id> sql-plan <exec-id> --dot -o plan.dot  # save to file
+
 # Download event logs
 spark-history-cli --app-id <id> logs output.zip
 
 # JSON output for scripting/agents
 spark-history-cli --json apps
 spark-history-cli --json --app-id <id> jobs
+spark-history-cli --json --app-id <id> sql-plan <exec-id>
 ```
 
 ### REPL Commands
@@ -92,6 +100,7 @@ stages                  List stages
 stage <id> [attempt]    Show stage details
 executors [--all]       List executors
 sql [id]                List or show SQL executions
+sql-plan <id> [opts]    Show SQL plan (--view, --dot, -o)
 rdds                    List cached RDDs
 env                     Show environment/config
 logs [path]             Download event logs
