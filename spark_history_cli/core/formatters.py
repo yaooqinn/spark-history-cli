@@ -496,6 +496,23 @@ def format_rdd_list(rdds: list[dict]) -> tuple[list[str], list[list[str]]]:
     return headers, rows
 
 
+def format_rdd_detail(rdd: dict) -> dict[str, str]:
+    """Format RDD storage detail as a status block."""
+    info = {
+        "RDD ID": str(rdd.get("id", "")),
+        "Name": rdd.get("name", ""),
+        "Storage Level": rdd.get("storageLevel", ""),
+        "Partitions (cached/total)": f"{rdd.get('numCachedPartitions', 0)}/{rdd.get('numPartitions', 0)}",
+        "Memory Used": _bytes(rdd.get("memoryUsed")),
+        "Disk Used": _bytes(rdd.get("diskUsed")),
+    }
+    # Add per-partition data distribution if available
+    partitions = rdd.get("dataDistribution", rdd.get("partitions", []))
+    if partitions:
+        info["Data Distribution"] = f"{len(partitions)} entries"
+    return info
+
+
 # ── SQL Plan Formatters ───────────────────────────────────────────────
 
 

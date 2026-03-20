@@ -147,6 +147,7 @@ def repl(state: CliState):
         "summary": "Application overview (config + workload)",
         "processes": "List miscellaneous processes",
         "rdds": "List cached RDDs for current app",
+        "rdd <id>": "Show RDD details",
         "env": "Show application environment",
         "logs <path>": "Download event logs to file",
         "version": "Show Spark version",
@@ -457,6 +458,15 @@ def repl(state: CliState):
                 rdds = client.list_rdds(app_id)
                 headers, rows = fmt.format_rdd_list(rdds)
                 output_table(skin, headers, rows)
+
+            elif cmd == "rdd":
+                if not args or not args[0].isdigit():
+                    skin.error("Usage: rdd <rdd-id>")
+                else:
+                    app_id = state.session.require_app()
+                    data = client.get_rdd(app_id, int(args[0]))
+                    info = fmt.format_rdd_detail(data)
+                    output_status_block(skin, info, title=f"RDD {args[0]}")
 
             elif cmd == "env":
                 app_id = state.resolve_app_id(None)
@@ -977,6 +987,28 @@ def cmd_rdds(state: CliState):
         skin = ReplSkin("spark_history", version=__version__)
         headers, rows = fmt.format_rdd_list(rdds)
         output_table(skin, headers, rows)
+
+
+@cli.command("rdd")
+@click.argument("rdd_id", type=int)
+@pass_state
+def cmd_rdd(state: CliState, rdd_id: int):
+    """Show details for a specific cached RDD.
+
+    Examples:
+
+      spark-history-cli -a <app> rdd 42
+    """
+    client = state.ensure_client()
+    app_id = state.resolve_app_id(None)
+    data = client.get_rdd(app_id, rdd_id)
+    if state.json_mode:
+        output_json(data)
+    else:
+        from spark_history_cli.utils.repl_skin import ReplSkin
+        skin = ReplSkin("spark_history", version=__version__)
+        info = fmt.format_rdd_detail(data)
+        output_status_block(skin, info, title=f"RDD {rdd_id}")
 
 
 @cli.command("env")
