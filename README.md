@@ -103,6 +103,8 @@ jobs                    List jobs for current app
 job <id>                Show job details
 stages                  List stages
 stage <id> [attempt]    Show stage details
+stage-summary <id>      Task metric quantiles (p5-p95)
+stage-tasks <id>        List tasks (--length N, --sort-by)
 executors [--all]       List executors
 sql [id]                List or show SQL executions
 sql-plan <id> [opts]    Show SQL plan (--view, --dot, -o)

@@ -299,6 +299,78 @@ def format_stage_detail(stage: dict) -> dict[str, str]:
     }
 
 
+def format_task_summary(summary: dict) -> tuple[list[str], list[list[str]]]:
+    """Format task summary (quantile distribution) as a table."""
+    quantiles = summary.get("quantiles", [])
+    headers = ["Metric"] + [f"p{int(q * 100)}" for q in quantiles]
+
+    def _row(label: str, values: list, fmt_fn=None):
+        if fmt_fn:
+            return [label] + [fmt_fn(v) for v in values]
+        return [label] + [f"{v:.0f}" for v in values]
+
+    rows = [
+        _row("Duration (ms)", summary.get("duration", [])),
+        _row("Executor Run Time (ms)", summary.get("executorRunTime", [])),
+        _row("JVM GC Time (ms)", summary.get("jvmGcTime", [])),
+        _row("Scheduler Delay (ms)", summary.get("schedulerDelay", [])),
+        _row("Deser Time (ms)", summary.get("executorDeserializeTime", [])),
+        _row("Result Size", summary.get("resultSize", []), _bytes),
+        _row("Peak Memory", summary.get("peakExecutionMemory", []), _bytes),
+        _row("Memory Spilled", summary.get("memoryBytesSpilled", []), _bytes),
+        _row("Disk Spilled", summary.get("diskBytesSpilled", []), _bytes),
+    ]
+    # Input metrics
+    inp = summary.get("inputMetrics", {})
+    if any(v > 0 for v in inp.get("bytesRead", [])):
+        rows.append(_row("Input Bytes", inp.get("bytesRead", []), _bytes))
+        rows.append(_row("Input Records", inp.get("recordsRead", [])))
+    # Output metrics
+    out = summary.get("outputMetrics", {})
+    if any(v > 0 for v in out.get("bytesWritten", [])):
+        rows.append(_row("Output Bytes", out.get("bytesWritten", []), _bytes))
+        rows.append(_row("Output Records", out.get("recordsWritten", [])))
+    # Shuffle read
+    sr = summary.get("shuffleReadMetrics", {})
+    if any(v > 0 for v in sr.get("readBytes", sr.get("localBytesRead", []))):
+        total_read = sr.get("readBytes", [v1 + v2 for v1, v2 in zip(sr.get("localBytesRead", []), sr.get("remoteBytesRead", []))] if sr.get("localBytesRead") else [])
+        if total_read:
+            rows.append(_row("Shuffle Read", total_read, _bytes))
+        rows.append(_row("Shuffle Read Records", sr.get("readRecords", sr.get("recordsRead", []))))
+    # Shuffle write
+    sw = summary.get("shuffleWriteMetrics", {})
+    if any(v > 0 for v in sw.get("writeBytes", sw.get("bytesWritten", []))):
+        rows.append(_row("Shuffle Write", sw.get("writeBytes", sw.get("bytesWritten", [])), _bytes))
+        rows.append(_row("Shuffle Write Records", sw.get("writeRecords", sw.get("recordsWritten", []))))
+
+    return headers, rows
+
+
+def format_task_list(tasks: list[dict]) -> tuple[list[str], list[list[str]]]:
+    """Format task list as table headers and rows."""
+    headers = ["Task ID", "Index", "Attempt", "Status", "Executor", "Host", "Duration", "GC", "Input", "Shuffle R/W"]
+    rows = []
+    for t in tasks:
+        m = t.get("taskMetrics", {})
+        sr = m.get("shuffleReadMetrics", {})
+        sw = m.get("shuffleWriteMetrics", {})
+        shuffle_read = sr.get("localBytesRead", 0) + sr.get("remoteBytesRead", 0)
+        shuffle_write = sw.get("bytesWritten", 0)
+        rows.append([
+            str(t.get("taskId", "")),
+            str(t.get("index", "")),
+            str(t.get("attempt", 0)),
+            t.get("status", ""),
+            t.get("executorId", ""),
+            (t.get("host") or "")[:20],
+            _duration(t.get("duration")),
+            _duration(m.get("jvmGcTime")),
+            _bytes(m.get("inputMetrics", {}).get("bytesRead")),
+            f"{_bytes(shuffle_read)}/{_bytes(shuffle_write)}",
+        ])
+    return headers, rows
+
+
 # ── Executor Formatters ───────────────────────────────────────────────
 
 

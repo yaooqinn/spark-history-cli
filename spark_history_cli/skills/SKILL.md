@@ -55,6 +55,8 @@ python -m spark_history_cli --json apps
 - `app <id>` for high-level details about one run
 - `jobs`, `job <id>` for job-level failures or progress
 - `stages`, `stage <id>` for task/stage bottlenecks
+- `stage-summary <id>` for task metric quantiles (p5/p25/p50/p75/p95) — duration, GC, memory, shuffle, I/O
+- `stage-tasks <id>` for individual task details — sorted by runtime to find stragglers
 - `executors --all` for executor churn or skew investigations
 - `sql` for SQL execution history and plan graph data
 - `sql-plan <id>` for SQL plan extraction:

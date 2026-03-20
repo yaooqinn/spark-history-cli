@@ -134,10 +134,14 @@ def repl(state: CliState):
         "job <id>": "Show job details",
         "stages": "List stages for current app",
         "stage <id>": "Show stage details",
+        "stage-summary <id>": "Task metric quantiles (p5/p25/p50/p75/p95)",
+        "stage-tasks <id>": "List tasks (--length N, --sort-by FIELD)",
         "executors": "List executors for current app",
         "sql": "List SQL executions for current app",
         "sql <id>": "Show SQL execution details",
         "sql-plan <id>": "Show SQL plan (--view initial|final|full, --dot for Graphviz)",
+        "sql-jobs <id>": "Show jobs for a SQL execution",
+        "summary": "Application overview (config + workload)",
         "rdds": "List cached RDDs for current app",
         "env": "Show application environment",
         "logs <path>": "Download event logs to file",
@@ -302,6 +306,37 @@ def repl(state: CliState):
                         else:
                             headers, rows = fmt.format_stage_list(stages)
                             output_table(skin, headers, rows)
+
+            elif cmd == "stage-summary":
+                if not args or not args[0].isdigit():
+                    skin.error("Usage: stage-summary <stage-id> [attempt-id]")
+                else:
+                    app_id = state.session.require_app()
+                    stage_id = int(args[0])
+                    attempt_id = int(args[1]) if len(args) > 1 and args[1].isdigit() else 0
+                    data = client.get_task_summary(app_id, stage_id, attempt_id)
+                    headers, rows = fmt.format_task_summary(data)
+                    skin.section(f"Task Summary for Stage {stage_id}/{attempt_id}")
+                    output_table(skin, headers, rows)
+
+            elif cmd == "stage-tasks":
+                if not args or not args[0].isdigit():
+                    skin.error("Usage: stage-tasks <stage-id> [attempt-id] [--length N] [--sort-by FIELD]")
+                else:
+                    app_id = state.session.require_app()
+                    stage_id = int(args[0])
+                    attempt_id = int(args[1]) if len(args) > 1 and args[1].isdigit() else 0
+                    length = 20
+                    sort_by = "ID"
+                    for i, a in enumerate(args):
+                        if a == "--length" and i + 1 < len(args):
+                            length = int(args[i + 1])
+                        if a == "--sort-by" and i + 1 < len(args):
+                            sort_by = args[i + 1]
+                    data = client.list_tasks(app_id, stage_id, attempt_id, length=length, sort_by=sort_by)
+                    headers, rows = fmt.format_task_list(data)
+                    skin.section(f"Tasks for Stage {stage_id}/{attempt_id}")
+                    output_table(skin, headers, rows)
 
             elif cmd in ("executors", "execs"):
                 app_id = state.resolve_app_id(None)
@@ -565,6 +600,70 @@ def cmd_stage(state: CliState, stage_id: int, attempt: int | None):
         else:
             info = fmt.format_stage_detail(data)
             output_status_block(skin, info, title=f"Stage {stage_id}")
+
+
+@cli.command("stage-summary")
+@click.argument("stage_id", type=int)
+@click.option("--attempt", type=int, default=0, show_default=True,
+              help="Stage attempt ID.")
+@pass_state
+def cmd_stage_summary(state: CliState, stage_id: int, attempt: int):
+    """Show task metric quantiles for a stage (p5/p25/p50/p75/p95).
+
+    Examples:
+
+      spark-history-cli -a <app> stage-summary 42
+
+      spark-history-cli -a <app> stage-summary 42 --attempt 1
+    """
+    client = state.ensure_client()
+    app_id = state.resolve_app_id(None)
+    data = client.get_task_summary(app_id, stage_id, attempt)
+    if state.json_mode:
+        output_json(data)
+    else:
+        from spark_history_cli.utils.repl_skin import ReplSkin
+        skin = ReplSkin("spark_history", version=__version__)
+        headers, rows = fmt.format_task_summary(data)
+        skin.section(f"Task Summary for Stage {stage_id}/{attempt}")
+        output_table(skin, headers, rows)
+
+
+@cli.command("stage-tasks")
+@click.argument("stage_id", type=int)
+@click.option("--attempt", type=int, default=0, show_default=True,
+              help="Stage attempt ID.")
+@click.option("--offset", type=int, default=0, help="Offset for pagination.")
+@click.option("--length", type=int, default=20, show_default=True,
+              help="Number of tasks to return.")
+@click.option("--sort-by", type=click.Choice(
+    ["ID", "runtime", "-runtime"],
+    case_sensitive=True), default="-runtime", show_default=True,
+    help="Sort field (use - prefix for descending).")
+@pass_state
+def cmd_stage_tasks(state: CliState, stage_id: int, attempt: int,
+                    offset: int, length: int, sort_by: str):
+    """List individual tasks for a stage.
+
+    Examples:
+
+      spark-history-cli -a <app> stage-tasks 42
+
+      spark-history-cli -a <app> stage-tasks 42 --sort-by -runtime --length 10
+    """
+    client = state.ensure_client()
+    app_id = state.resolve_app_id(None)
+    data = client.list_tasks(app_id, stage_id, attempt,
+                             offset=offset, length=length,
+                             sort_by=sort_by)
+    if state.json_mode:
+        output_json(data)
+    else:
+        from spark_history_cli.utils.repl_skin import ReplSkin
+        skin = ReplSkin("spark_history", version=__version__)
+        headers, rows = fmt.format_task_list(data)
+        skin.section(f"Tasks for Stage {stage_id}/{attempt} (offset={offset}, limit={length})")
+        output_table(skin, headers, rows)
 
 
 @cli.command("executors")
