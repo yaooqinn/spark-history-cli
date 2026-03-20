@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.4.0] - 2025-03-20
+
+### Added
+- **`spark-advisor` skill** — Bundled skill for diagnosing, comparing, and optimizing Spark applications.
+  - TPC-DS benchmark comparison methodology with per-query speedup analysis.
+  - Diagnostic rules for skew, GC pressure, shuffle overhead, spill, and stragglers.
+  - Gluten/Velox-aware: detects native offloading, fallback boundaries, and columnar transitions.
+- **`skills/` directory at repo root** — Standard discovery path for `npx skills add` (skills.sh).
+  - Install both skills to any supported agent: `npx skills add yaooqinn/spark-history-cli`
+- `install-skill` command now installs both `spark-history-cli` and `spark-advisor` skills.
+
 ## [1.3.0] - 2025-03-20
 
 ### Added
