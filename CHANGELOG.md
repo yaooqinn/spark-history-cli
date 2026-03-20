@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.0] - 2025-03-20
+
+### Added
+- **`stage-summary` command** — Task metric quantiles (p5/p25/p50/p75/p95) for duration, GC, memory, shuffle, and I/O.
+- **`stage-tasks` command** — Individual task listing with sort support (`--sort-by ID|runtime|-runtime`) and pagination.
+- **`job-stages` command** — Show stages belonging to a job.
+- **`attempts` command** — List all attempts for an application.
+- **`attempt` command** — Show details for a specific attempt (duration, log source, etc.).
+- **`processes` command** — List miscellaneous processes (streaming receivers, etc.).
+- **`rdd` command** — Show details for a specific cached RDD.
+- All new commands available in both one-shot CLI and REPL modes.
+- Full SHS REST API coverage — all 20 endpoints now have CLI commands.
+
 ## [1.2.0] - 2025-03-19
 
 ### Added
