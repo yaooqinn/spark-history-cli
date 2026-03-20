@@ -7,6 +7,20 @@ description: "Diagnose, compare, and optimize Apache Spark applications and SQL 
 
 You are a Spark performance engineer. Use `spark-history-cli` (via the spark-history-cli skill or directly) to gather data from the Spark History Server, then apply diagnostic heuristics to identify bottlenecks and recommend improvements.
 
+## Quick Start
+
+Diagnose an app in one shot:
+
+```bash
+# Get the latest app ID, then diagnose it
+spark-history-cli --json apps --limit 1
+spark-history-cli --json -a <app-id> summary
+spark-history-cli --json -a <app-id> stages
+spark-history-cli --json -a <app-id> executors --all
+```
+
+Then ask: "Why is this app slow?" — the skill will analyze the data and produce findings.
+
 ## When to use this skill
 
 - User asks why a Spark application or SQL query is slow

@@ -8,6 +8,18 @@ compatibility: "Requires Python 3.10+, the spark-history-cli package, and networ
 
 Use this skill when the task is about exploring or debugging data exposed by a running Apache Spark History Server.
 
+## Installation
+
+```bash
+pip install spark-history-cli
+```
+
+Or if not on PATH after install:
+
+```bash
+python -m spark_history_cli --json apps
+```
+
 ## Why use this skill
 
 - It gives you a purpose-built CLI instead of scraping the Spark History Server web UI.
@@ -79,3 +91,14 @@ python -m spark_history_cli --json apps
 - Summarize findings after retrieving JSON; do not dump raw JSON unless the user asked for it.
 - Treat event logs and benchmark history as potentially sensitive. Download them only when necessary and keep them local.
 - This CLI needs a running Spark History Server. It does not replace SHS and it does not parse raw event logs directly.
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| `Connection refused` | SHS not running — start with `$SPARK_HOME/sbin/start-history-server.sh` |
+| `404 Not Found` on app | App ID may include attempt suffix — use `apps` to list valid IDs |
+| No apps listed | Check `spark.history.fs.logDirectory` points to the right event log path |
+| `ModuleNotFoundError` | CLI not installed — run `pip install spark-history-cli` |
+| Wrong server | Set `SPARK_HISTORY_SERVER` env var or use `--server <url>` |
+| Timeout on large apps | SHS may be parsing event logs — wait and retry, or check SHS logs |
