@@ -129,6 +129,8 @@ def repl(state: CliState):
     commands_help = {
         "apps": "List applications (apps [--status completed|running] [--limit N])",
         "app <id>": "Show application details and set as current",
+        "attempts": "List attempts for current app",
+        "attempt <id>": "Show attempt details",
         "use <id>": "Set current application context",
         "jobs": "List jobs for current app",
         "job <id>": "Show job details",
@@ -143,6 +145,7 @@ def repl(state: CliState):
         "sql-plan <id>": "Show SQL plan (--view initial|final|full, --dot for Graphviz)",
         "sql-jobs <id>": "Show jobs for a SQL execution",
         "summary": "Application overview (config + workload)",
+        "processes": "List miscellaneous processes",
         "rdds": "List cached RDDs for current app",
         "env": "Show application environment",
         "logs <path>": "Download event logs to file",
@@ -245,6 +248,28 @@ def repl(state: CliState):
                     info = fmt.format_app_detail(app)
                     output_status_block(skin, info, title="Application")
                     skin.hint(f"Context set to {app_id}")
+
+            elif cmd == "attempts":
+                app_id = state.resolve_app_id(None)
+                app = client.get_application(app_id)
+                attempts = app.get("attempts", [])
+                headers, rows = fmt.format_attempt_list(attempts)
+                output_table(skin, headers, rows)
+
+            elif cmd == "attempt":
+                if not args:
+                    skin.error("Usage: attempt <attempt-id>")
+                else:
+                    app_id = state.session.require_app()
+                    data = client.get_attempt(app_id, args[0])
+                    info = fmt.format_attempt_detail(data)
+                    output_status_block(skin, info, title=f"Attempt {args[0]}")
+
+            elif cmd == "processes":
+                app_id = state.resolve_app_id(None)
+                procs = client.list_misc_processes(app_id)
+                headers, rows = fmt.format_process_list(procs)
+                output_table(skin, headers, rows)
 
             elif cmd == "summary":
                 app_id = state.resolve_app_id(None)
@@ -508,6 +533,73 @@ def cmd_app(state: CliState, app_id: str):
         skin = ReplSkin("spark_history", version=__version__)
         info = fmt.format_app_detail(app)
         output_status_block(skin, info, title="Application")
+
+
+@cli.command("attempts")
+@pass_state
+def cmd_attempts(state: CliState):
+    """List attempts for an application.
+
+    Examples:
+
+      spark-history-cli -a <app> attempts
+    """
+    client = state.ensure_client()
+    app_id = state.resolve_app_id(None)
+    app = client.get_application(app_id)
+    attempts = app.get("attempts", [])
+    if state.json_mode:
+        output_json(attempts)
+    else:
+        from spark_history_cli.utils.repl_skin import ReplSkin
+        skin = ReplSkin("spark_history", version=__version__)
+        headers, rows = fmt.format_attempt_list(attempts)
+        output_table(skin, headers, rows)
+
+
+@cli.command("attempt")
+@click.argument("attempt_id")
+@pass_state
+def cmd_attempt(state: CliState, attempt_id: str):
+    """Show details for a specific application attempt.
+
+    Examples:
+
+      spark-history-cli -a <app> attempt 1
+    """
+    client = state.ensure_client()
+    app_id = state.resolve_app_id(None)
+    data = client.get_attempt(app_id, attempt_id)
+    if state.json_mode:
+        output_json(data)
+    else:
+        from spark_history_cli.utils.repl_skin import ReplSkin
+        skin = ReplSkin("spark_history", version=__version__)
+        info = fmt.format_attempt_detail(data)
+        output_status_block(skin, info, title=f"Attempt {attempt_id}")
+
+
+@cli.command("processes")
+@pass_state
+def cmd_processes(state: CliState):
+    """List miscellaneous processes for an application.
+
+    Shows streaming receivers and other auxiliary processes.
+
+    Examples:
+
+      spark-history-cli -a <app> processes
+    """
+    client = state.ensure_client()
+    app_id = state.resolve_app_id(None)
+    procs = client.list_misc_processes(app_id)
+    if state.json_mode:
+        output_json(procs)
+    else:
+        from spark_history_cli.utils.repl_skin import ReplSkin
+        skin = ReplSkin("spark_history", version=__version__)
+        headers, rows = fmt.format_process_list(procs)
+        output_table(skin, headers, rows)
 
 
 @cli.command("summary")

@@ -53,6 +53,7 @@ python -m spark_history_cli --json apps
 
 - `apps` for recent runs, durations, status, and picking candidates
 - `app <id>` for high-level details about one run
+- `attempts` for multi-attempt apps (list or show specific attempt details)
 - `jobs`, `job <id>` for job-level failures or progress
 - `job-stages <id>` for stages belonging to a job
 - `stages`, `stage <id>` for task/stage bottlenecks

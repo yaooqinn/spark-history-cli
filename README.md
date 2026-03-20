@@ -98,6 +98,8 @@ spark-history-cli --json --app-id <id> sql-jobs <exec-id>
 ```
 apps                    List applications
 app <id>                Show app details and set as current
+attempts                List attempts for current app
+attempt <id>            Show attempt details
 use <id>                Set current app context
 jobs                    List jobs for current app
 job <id>                Show job details
@@ -111,6 +113,7 @@ sql [id]                List or show SQL executions
 sql-plan <id> [opts]    Show SQL plan (--view, --dot, -o)
 sql-jobs <id>           Show jobs for a SQL execution
 summary                 Application overview (config + workload)
+processes               List miscellaneous processes
 rdds                    List cached RDDs
 env                     Show environment/config
 logs [path]             Download event logs

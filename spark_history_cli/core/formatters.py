@@ -115,6 +115,55 @@ def format_app_detail(app: dict) -> dict[str, str]:
     return info
 
 
+def format_attempt_list(attempts: list[dict]) -> tuple[list[str], list[list[str]]]:
+    """Format application attempts as a table."""
+    headers = ["Attempt", "Status", "Started", "Ended", "Duration", "Spark Version", "User"]
+    rows = []
+    for att in attempts:
+        status = "RUNNING" if not att.get("completed", True) else "COMPLETED"
+        rows.append([
+            str(att.get("attemptId", "")),
+            f"{_status_icon(status)} {status}",
+            _ts_from_str(att.get("startTime")),
+            _ts_from_str(att.get("endTime")),
+            _duration(att.get("duration")),
+            att.get("appSparkVersion", ""),
+            att.get("sparkUser", ""),
+        ])
+    return headers, rows
+
+
+def format_attempt_detail(att: dict) -> dict[str, str]:
+    """Format a single attempt as a status block."""
+    status = "RUNNING" if not att.get("completed", True) else "COMPLETED"
+    return {
+        "Attempt ID": str(att.get("attemptId", "")),
+        "Status": f"{_status_icon(status)} {status}",
+        "Started": _ts_from_str(att.get("startTime")),
+        "Ended": _ts_from_str(att.get("endTime")),
+        "Last Updated": _ts_from_str(att.get("lastUpdated")),
+        "Duration": _duration(att.get("duration")),
+        "Spark Version": att.get("appSparkVersion", ""),
+        "User": att.get("sparkUser", ""),
+        "Log Source": att.get("logSourceName", ""),
+    }
+
+
+def format_process_list(processes: list[dict]) -> tuple[list[str], list[list[str]]]:
+    """Format miscellaneous processes as a table."""
+    headers = ["Process ID", "Host", "Active", "Total Cores", "Resources"]
+    rows = []
+    for p in processes:
+        rows.append([
+            str(p.get("processId") or p.get("id", "")),
+            p.get("hostPort", p.get("host", "")),
+            "✓" if p.get("isActive") else "✗",
+            str(p.get("totalCores", 0)),
+            str(list(p.get("processLogs", {}).keys()) or ""),
+        ])
+    return headers, rows
+
+
 def format_summary(
     app: dict,
     env: dict,
