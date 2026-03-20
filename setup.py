@@ -15,7 +15,11 @@ setup(
     },
     packages=find_packages(),
     package_data={
-        "spark_history_cli": ["skills/*.md"],
+        "spark_history_cli": [
+            "skills/*.md",
+            "skills/spark-advisor/*.md",
+            "skills/spark-advisor/references/*.md",
+        ],
     },
     install_requires=[
         "click>=8.0.0",

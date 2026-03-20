@@ -438,11 +438,12 @@ class TestCLISubprocess:
 
     def test_install_skill(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            target = os.path.join(tmpdir, "spark-history-cli")
-            result = self._run(["install-skill", "--target-dir", target])
+            result = self._run(["install-skill", "--target-dir", tmpdir])
             assert result.returncode == 0
-            assert os.path.exists(os.path.join(target, "SKILL.md"))
-            assert "Installed Copilot skill" in result.stdout
+            assert os.path.exists(os.path.join(tmpdir, "spark-history-cli", "SKILL.md"))
+            assert os.path.exists(os.path.join(tmpdir, "spark-advisor", "SKILL.md"))
+            assert "spark-history-cli" in result.stdout
+            assert "spark-advisor" in result.stdout
 
 
 class TestCLIOptions:

@@ -18,7 +18,7 @@ from spark_history_cli import __version__
 from spark_history_cli.core.client import SparkHistoryClient, HistoryServerError
 from spark_history_cli.core.session import Session
 from spark_history_cli.core import formatters as fmt
-from spark_history_cli.utils.skill_install import default_skill_target, install_copilot_skill
+from spark_history_cli.utils.skill_install import default_skill_target, install_all_skills
 
 
 # ── Shared state via Click context ────────────────────────────────────
@@ -1100,27 +1100,30 @@ def cmd_install_skill(
     target_dir: Path | None,
     force: bool,
 ):
-    """Install the bundled Copilot skill."""
-    destination = target_dir or default_skill_target(scope)
+    """Install the bundled Copilot skills (spark-history-cli + spark-advisor)."""
+    base = target_dir or default_skill_target(scope)
     try:
-        installed_path = install_copilot_skill(destination, force=force)
+        installed = install_all_skills(base, force=force)
     except FileExistsError as exc:
         raise click.ClickException(str(exc)) from exc
 
+    names = [p.name for p in installed]
     result = {
-        "name": "spark-history-cli",
-        "installed_to": str(installed_path),
+        "skills": names,
+        "installed_to": str(base),
         "scope": scope,
         "next_steps": [
             "Run /skills reload in Copilot CLI if it is already open.",
-            "Verify with /skills list or /skills info spark-history-cli.",
-            "Use it with prompts like 'Use /spark-history-cli to inspect my latest SHS app'.",
+            "Verify with /skills list.",
+            "Use spark-history-cli skill for SHS queries.",
+            "Use spark-advisor skill for diagnosis and comparison.",
         ],
     }
     if state.json_mode:
         output_json(result)
     else:
-        click.echo(f"Installed Copilot skill to {installed_path}")
+        for path in installed:
+            click.echo(f"Installed skill: {path.name} -> {path}")
         click.echo("Next steps:")
         for step in result["next_steps"]:
             click.echo(f"  - {step}")
