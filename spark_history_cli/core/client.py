@@ -24,11 +24,19 @@ class HistoryServerError(Exception):
 class SparkHistoryClient:
     """Client for the Spark History Server REST API (/api/v1)."""
 
-    def __init__(self, server_url: str = "http://localhost:18080", timeout: int = 30):
+    def __init__(
+        self,
+        server_url: str = "http://localhost:18080",
+        timeout: int = 30,
+        basic_auth_username: str | None = None,
+        basic_auth_password: str | None = None,
+    ):
         self.server_url = server_url.rstrip("/")
         self.base_url = f"{self.server_url}/api/v1"
         self.timeout = timeout
         self._session = requests.Session()
+        if basic_auth_username is not None:
+            self._session.auth = (basic_auth_username, basic_auth_password or "")
         self._attempt_cache: dict[str, str | None] = {}
 
     def _resolve_attempt(self, app_id: str) -> str:

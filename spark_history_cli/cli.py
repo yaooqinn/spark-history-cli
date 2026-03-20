@@ -28,10 +28,16 @@ class CliState:
         self.client: SparkHistoryClient | None = None
         self.session: Session = Session()
         self.json_mode: bool = False
+        self.basic_auth_username: str | None = None
+        self.basic_auth_password: str | None = None
 
     def ensure_client(self) -> SparkHistoryClient:
         if self.client is None:
-            self.client = SparkHistoryClient(self.session.server_url)
+            self.client = SparkHistoryClient(
+                self.session.server_url,
+                basic_auth_username=self.basic_auth_username,
+                basic_auth_password=self.basic_auth_password,
+            )
         return self.client
 
     def resolve_app_id(self, app_id: str | None) -> str:
@@ -86,17 +92,39 @@ def _fetch_sql_jobs(client, app_id: str, sql_exec: dict) -> list[dict]:
 @click.option("--server", "-s", default="http://localhost:18080",
               envvar="SPARK_HISTORY_SERVER",
               help="Spark History Server URL (default: http://localhost:18080)")
+@click.option("--basic-auth-user", default=None,
+              envvar="SPARK_HISTORY_BASIC_AUTH_USER",
+              help="Basic Auth username for Spark History Server")
+@click.option("--basic-auth-password", default=None,
+              envvar="SPARK_HISTORY_BASIC_AUTH_PASSWORD",
+              help="Basic Auth password for Spark History Server (omit to prompt securely)")
 @click.option("--json", "json_mode", is_flag=True, default=False,
               help="Output in JSON format for machine consumption")
 @click.option("--app-id", "-a", default=None,
               help="Application ID to use (sets context for subcommands)")
 @click.version_option(__version__, prog_name="spark-history-cli")
 @click.pass_context
-def cli(ctx, server: str, json_mode: bool, app_id: str | None):
+def cli(
+    ctx,
+    server: str,
+    basic_auth_user: str | None,
+    basic_auth_password: str | None,
+    json_mode: bool,
+    app_id: str | None,
+):
     """CLI for querying the Apache Spark History Server REST API."""
+    if basic_auth_password is not None and basic_auth_user is None:
+        raise click.UsageError(
+            "--basic-auth-password requires --basic-auth-user."
+        )
+    if basic_auth_user is not None and basic_auth_password is None:
+        basic_auth_password = click.prompt("Basic Auth password", hide_input=True)
+
     state = CliState()
     state.session.server_url = server
     state.json_mode = json_mode
+    state.basic_auth_username = basic_auth_user
+    state.basic_auth_password = basic_auth_password
     if app_id:
         state.session.set_app(app_id)
     state.ensure_client()
@@ -192,7 +220,11 @@ def repl(state: CliState):
             elif cmd == "server":
                 if args:
                     state.session.server_url = args[0]
-                    state.client = SparkHistoryClient(args[0])
+                    state.client = SparkHistoryClient(
+                        args[0],
+                        basic_auth_username=state.basic_auth_username,
+                        basic_auth_password=state.basic_auth_password,
+                    )
                     client = state.client
                     try:
                         ver = client.get_version()
@@ -205,6 +237,7 @@ def repl(state: CliState):
             elif cmd == "status":
                 skin.status_block({
                     "Server": state.session.server_url,
+                    "Basic Auth": "enabled" if state.basic_auth_username else "disabled",
                     "Current App": state.session.current_app_id or "(none)",
                     "Attempt": state.session.current_attempt_id or "(none)",
                 }, title="Session")
