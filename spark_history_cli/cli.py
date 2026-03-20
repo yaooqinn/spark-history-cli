@@ -132,6 +132,7 @@ def repl(state: CliState):
         "use <id>": "Set current application context",
         "jobs": "List jobs for current app",
         "job <id>": "Show job details",
+        "job-stages <id>": "Show stages for a job",
         "stages": "List stages for current app",
         "stage <id>": "Show stage details",
         "stage-summary <id>": "Task metric quantiles (p5/p25/p50/p75/p95)",
@@ -276,6 +277,26 @@ def repl(state: CliState):
                     job = client.get_job(app_id, int(args[0]))
                     info = fmt.format_job_detail(job)
                     output_status_block(skin, info, title=f"Job {args[0]}")
+
+            elif cmd == "job-stages":
+                if not args or not args[0].isdigit():
+                    skin.error("Usage: job-stages <job-id>")
+                else:
+                    app_id = state.session.require_app()
+                    job_id = int(args[0])
+                    job = client.get_job(app_id, job_id)
+                    stage_ids = job.get("stageIds", [])
+                    if not stage_ids:
+                        skin.warning(f"No stages found for job {job_id}")
+                    else:
+                        all_stages = client.list_stages(app_id)
+                        stages = [s for s in all_stages if s.get("stageId") in stage_ids]
+                        if not stages:
+                            skin.warning(f"Job {job_id} references stages {stage_ids} but none were found")
+                        else:
+                            skin.section(f"Stages for Job {job_id} ({len(stages)}/{len(stage_ids)} stages)")
+                            headers, rows = fmt.format_stage_list(stages)
+                            output_table(skin, headers, rows)
 
             elif cmd == "stages":
                 app_id = state.resolve_app_id(None)
@@ -555,6 +576,40 @@ def cmd_job(state: CliState, job_id: int):
         skin = ReplSkin("spark_history", version=__version__)
         info = fmt.format_job_detail(job)
         output_status_block(skin, info, title=f"Job {job_id}")
+
+
+@cli.command("job-stages")
+@click.argument("job_id", type=int)
+@pass_state
+def cmd_job_stages(state: CliState, job_id: int):
+    """Show stages belonging to a job.
+
+    Fetches the job to get its stage IDs, then retrieves and displays
+    each stage's details.
+
+    Examples:
+
+      spark-history-cli -a <app> job-stages 42
+
+      spark-history-cli -a <app> --json job-stages 42
+    """
+    client = state.ensure_client()
+    app_id = state.resolve_app_id(None)
+    job = client.get_job(app_id, job_id)
+    stage_ids = job.get("stageIds", [])
+    if not stage_ids:
+        click.echo(f"No stages found for job {job_id}.")
+        return
+    all_stages = client.list_stages(app_id)
+    stages = [s for s in all_stages if s.get("stageId") in stage_ids]
+    if state.json_mode:
+        output_json(stages)
+    else:
+        from spark_history_cli.utils.repl_skin import ReplSkin
+        skin = ReplSkin("spark_history", version=__version__)
+        skin.section(f"Stages for Job {job_id} ({len(stages)}/{len(stage_ids)} stages)")
+        headers, rows = fmt.format_stage_list(stages)
+        output_table(skin, headers, rows)
 
 
 @cli.command("stages")

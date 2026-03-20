@@ -101,6 +101,7 @@ app <id>                Show app details and set as current
 use <id>                Set current app context
 jobs                    List jobs for current app
 job <id>                Show job details
+job-stages <id>         Show stages for a job
 stages                  List stages
 stage <id> [attempt]    Show stage details
 stage-summary <id>      Task metric quantiles (p5-p95)
