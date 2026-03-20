@@ -25,24 +25,22 @@ Or install from PyPI:
 pip install spark-history-cli
 ```
 
-### Install as a Copilot CLI skill
+### Install as agent skills
+
+Install skills for any supported agent (Claude Code, Copilot, Cursor, Codex, and [39 more](https://github.com/vercel-labs/skills#supported-agents)):
+
+```bash
+npx skills add yaooqinn/spark-history-cli
+```
+
+This installs two skills:
+- **spark-history-cli** — Query the Spark History Server
+- **spark-advisor** — Diagnose, compare, and optimize Spark applications
+
+Or install via the bundled CLI command (Copilot CLI / Claude Code only):
 
 ```bash
 spark-history-cli install-skill
-```
-
-This installs the bundled skill to `~/.copilot/skills/spark-history-cli`.
-
-If Copilot CLI is already running, reload skills with:
-
-```text
-/skills reload
-```
-
-Then verify with `/skills list` and invoke it with prompts like:
-
-```text
-Use /spark-history-cli to inspect the latest completed SHS application.
 ```
 
 ## Usage
