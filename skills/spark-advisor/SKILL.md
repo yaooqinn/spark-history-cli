@@ -142,6 +142,53 @@ These are the most impactful things to check. For the full diagnostic ruleset, s
 | Bad config | Partition count, executor sizing | `env`, `summary` |
 | AQE ineffective | Initial vs final plan difference | `sql-plan <id> --view initial/final` |
 | Gluten fallback | Non-Transformer nodes in final plan | `sql-plan <id> --view final` |
+| Small files read | Avg file size < 3MB, files > 100 | `sql <exec-id>` node metrics |
+| Small files written | Avg file size < 3MB, files > 100 | `sql <exec-id>` node metrics |
+| Broadcast too large | Broadcast data > 1GB | `sql <exec-id>` node metrics |
+| SMJ→BHJ conversion | SMJ with small input side | `sql-plan <id> --view final` |
+| Large cross join | Cross join rows > 10B | `sql <exec-id>` node metrics |
+| Long filter condition | Filter condition > 1000 chars | `sql-plan <id> --view final` |
+| Full scan on partitioned | Missing partition/cluster filters | `sql-plan <id> --view final` |
+| Large partition size | Max partition > 5GB | `stage-summary <id>` |
+| Wasted cores | Idle cores > 50% | `executors --all` |
+| Memory over-provisioned | Max usage < 70% | `executors --all` |
+| Driver memory risk | Driver heap > 95% | `executors --all` |
+| Iceberg inefficient replace | Files replaced > 30%, records < 30% | `sql <exec-id>` node metrics |
+
+## SQL Plan Analysis
+
+When diagnosing specific SQL queries, analyze the SQL plan nodes for these patterns:
+
+- **File I/O efficiency**: Check scan/write node metrics for `files read`, `bytes read`, `files written`, `bytes written`. Calculate average file size — small files (< 3MB) are a common hidden bottleneck.
+- **Join strategy**: Look for `SortMergeJoin` nodes where one input is significantly smaller than the other. These may benefit from broadcast hints or AQE tuning.
+- **Broadcast sizing**: Check `BroadcastExchange` node `data size` metric. Broadcasts > 1 GB cause excessive memory pressure and network overhead.
+- **Cross joins**: Identify `BroadcastNestedLoopJoin` or `CartesianProduct` nodes. Calculate total scanned rows from input sizes — cross joins on large tables are extremely dangerous.
+- **Filter complexity**: Inspect `Filter` node conditions. Very long conditions (> 1000 chars) with large IN-lists or OR chains should be converted to joins.
+- **Partition pruning**: For Delta Lake and Iceberg tables, verify that scan nodes show partition filters being applied. Full scans on partitioned tables waste I/O.
+- **Partition sizing**: Check stage task distribution for oversized partitions (> 5GB). These cause OOM risk, long tail tasks, and GC pressure.
+
+Use `sql <exec-id>` for node-level metrics and `sql-plan <exec-id> --view final` for post-AQE plan structure.
+
+## Lakehouse Awareness
+
+When analyzing workloads on Delta Lake or Apache Iceberg tables:
+
+### Delta Lake
+- **OPTIMIZE**: Recommend `OPTIMIZE` for tables with small file problems detected in scan metrics
+- **Z-ORDER**: Check if queries filter on z-ordered columns; if not, the z-ordering provides no benefit
+- **Liquid Clustering**: For Databricks, check if cluster key filters are being applied in scans
+- **Full scans**: Flag scans on partitioned Delta tables without partition filters
+
+### Apache Iceberg
+- **Copy-on-Write overhead**: For update/delete workloads, check if files replaced >> records changed — this indicates COW overhead
+- **Merge-on-Read**: Recommend `write.merge-mode=merge-on-read` for update-heavy tables
+- **Table maintenance**: Recommend `rewrite_data_files` for small file compaction
+- **Bulk replace detection**: If > 60% of table files are replaced in a single operation, flag potential misuse
+
+### General Lakehouse Checks
+- File sizes in scan/write metrics (target ~128MB per file)
+- Partition filter pushdown in scan nodes
+- Table statistics availability for cost-based optimization
 
 ## Gluten/Velox Awareness
 
