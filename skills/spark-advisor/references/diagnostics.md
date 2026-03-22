@@ -3,6 +3,12 @@
 Comprehensive rules for diagnosing Spark application performance issues.
 Apply these after collecting data via `spark-history-cli --json`.
 
+## Data Availability
+
+All diagnostics in this file use data from the **standard Spark History Server REST API** (`/api/v1/`). No additional plugins or instrumentation are required — works with vanilla OSS Apache Spark.
+
+**Note**: The Lakehouse-Specific Diagnostics section (Iceberg/Delta Lake) requires metadata that is only available when those frameworks expose metrics through Spark's SQL plan nodes. If the data is not present, those rules simply won't trigger.
+
 ## Stage-Level Diagnostics
 
 ### Task Skew
