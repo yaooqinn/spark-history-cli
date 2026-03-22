@@ -32,7 +32,12 @@ from click.testing import CliRunner
 from spark_history_cli.core.client import SparkHistoryClient, HistoryServerError
 from spark_history_cli.core.session import Session
 from spark_history_cli.core import formatters as fmt
-from spark_history_cli.cli import cli, _collect_sql_job_ids, _fetch_sql_jobs
+from spark_history_cli.cli import (
+    cli,
+    _collect_sql_job_ids,
+    _fetch_sql_jobs,
+    _parse_repl_sql_plan_args,
+)
 
 
 # ── Sample API Responses ──────────────────────────────────────────────
@@ -573,8 +578,58 @@ class TestSQLHelpers:
         assert [job["jobId"] for job in jobs] == [2, 3]
         client.list_jobs.assert_called_once_with("app-1")
 
+    def test_parse_repl_sql_plan_args_supports_output_and_view(self):
+        assert _parse_repl_sql_plan_args(["4", "--view", "final", "-o", "plan.txt"]) == (
+            4,
+            "final",
+            False,
+            "plan.txt",
+        )
+
+    def test_parse_repl_sql_plan_args_rejects_invalid_view(self):
+        with pytest.raises(ValueError, match="--view must be one of: full, initial, final"):
+            _parse_repl_sql_plan_args(["4", "--view", "weird"])
+
 
 class TestSQLCLI:
+    def test_sql_list_uses_lightweight_fetch(self):
+        runner = CliRunner()
+        mock_client = MagicMock()
+        mock_client.list_sql.return_value = [SAMPLE_SQL]
+
+        with patch("spark_history_cli.cli.CliState.ensure_client", return_value=mock_client):
+            result = runner.invoke(
+                cli,
+                ["--app-id", "app-1", "--json", "sql"],
+            )
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert len(data) == 1
+        mock_client.list_sql.assert_called_once_with(
+            "app-1",
+            details=False,
+            plan_description=False,
+            offset=0,
+            length=20,
+        )
+
+    def test_sql_detail_disables_plan_description(self):
+        runner = CliRunner()
+        mock_client = MagicMock()
+        mock_client.get_sql.return_value = SAMPLE_SQL
+
+        with patch("spark_history_cli.cli.CliState.ensure_client", return_value=mock_client):
+            result = runner.invoke(
+                cli,
+                ["--app-id", "app-1", "--json", "sql", "4"],
+            )
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["id"] == 0
+        mock_client.get_sql.assert_called_once_with("app-1", 4, plan_description=False)
+
     def test_sql_plan_json_returns_selected_view(self):
         runner = CliRunner()
         mock_client = MagicMock()
@@ -614,6 +669,26 @@ class TestSQLCLI:
             assert 'digraph "SQL 4"' in dot
             assert "n1 -> n2;" in dot
 
+    def test_sql_plan_json_writes_output_file(self):
+        runner = CliRunner()
+        mock_client = MagicMock()
+        mock_client.get_sql.return_value = SAMPLE_SQL_PLAN
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = os.path.join(tmpdir, "plan.json")
+            with patch("spark_history_cli.cli.CliState.ensure_client", return_value=mock_client):
+                result = runner.invoke(
+                    cli,
+                    ["--app-id", "app-1", "--json", "sql-plan", "4", "--view", "initial", "-o", output_path],
+                )
+
+            assert result.exit_code == 0
+            assert f"Plan JSON written to {output_path}" in result.output
+            with open(output_path, encoding="utf-8") as f:
+                data = json.load(f)
+            assert data["executionId"] == 4
+            assert "HashAggregate" in data["plan"]
+
     def test_sql_jobs_json_outputs_matched_jobs(self):
         runner = CliRunner()
         mock_client = MagicMock()
@@ -634,6 +709,7 @@ class TestSQLCLI:
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert [job["jobId"] for job in data] == [1, 2, 9]
+        mock_client.get_sql.assert_called_once_with("app-1", 4, plan_description=False)
 
     def test_sql_jobs_without_referenced_jobs_prints_message(self):
         runner = CliRunner()
@@ -648,3 +724,71 @@ class TestSQLCLI:
 
         assert result.exit_code == 0
         assert "No jobs found for SQL execution 4." in result.output
+
+
+class TestREPLSQLCLI:
+    def test_repl_sql_plan_writes_selected_view_to_file(self):
+        runner = CliRunner()
+        mock_client = MagicMock()
+        mock_client.get_version.return_value = {"spark": "4.0.0"}
+        mock_client.get_sql.return_value = SAMPLE_SQL_PLAN
+        skin = MagicMock()
+        skin.create_prompt_session.return_value = object()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = os.path.join(tmpdir, "repl-plan.txt")
+            skin.get_input.side_effect = [f"sql-plan 4 --view final -o {output_path}", EOFError()]
+
+            with patch("spark_history_cli.cli.CliState.ensure_client", return_value=mock_client):
+                with patch("spark_history_cli.utils.repl_skin.ReplSkin", return_value=skin):
+                    result = runner.invoke(cli, ["--app-id", "app-1"])
+
+            assert result.exit_code == 0
+            assert f"Plan written to {output_path}" in result.output
+            with open(output_path, encoding="utf-8") as f:
+                text = f.read()
+            assert "AdaptiveSparkPlan isFinalPlan=true" in text
+
+    def test_repl_sql_plan_rejects_invalid_view(self):
+        runner = CliRunner()
+        mock_client = MagicMock()
+        mock_client.get_version.return_value = {"spark": "4.0.0"}
+        skin = MagicMock()
+        skin.create_prompt_session.return_value = object()
+        skin.get_input.side_effect = ["sql-plan 4 --view weird", EOFError()]
+
+        with patch("spark_history_cli.cli.CliState.ensure_client", return_value=mock_client):
+            with patch("spark_history_cli.utils.repl_skin.ReplSkin", return_value=skin):
+                result = runner.invoke(cli, ["--app-id", "app-1"])
+
+        assert result.exit_code == 0
+        skin.error.assert_any_call("--view must be one of: full, initial, final")
+
+
+class TestSummaryCLI:
+    def test_summary_uses_lightweight_sql_fetch(self):
+        runner = CliRunner()
+        mock_client = MagicMock()
+        mock_client.get_application.return_value = SAMPLE_APP
+        mock_client.get_environment.return_value = SAMPLE_ENV
+        mock_client.list_jobs.return_value = [SAMPLE_JOB]
+        mock_client.list_stages.return_value = [SAMPLE_STAGE]
+        mock_client.list_all_executors.return_value = [SAMPLE_EXECUTOR]
+        mock_client.list_sql.return_value = [SAMPLE_SQL]
+
+        with patch("spark_history_cli.cli.CliState.ensure_client", return_value=mock_client):
+            result = runner.invoke(
+                cli,
+                ["--app-id", "app-1", "--json", "summary"],
+            )
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "Application" in data
+        assert "Workload" in data
+        mock_client.list_sql.assert_called_once_with(
+            "app-1",
+            details=False,
+            plan_description=False,
+            length=100000,
+        )

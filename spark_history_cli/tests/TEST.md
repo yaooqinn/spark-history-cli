@@ -4,7 +4,7 @@
 
 | File | Type | Planned Tests |
 |------|------|---------------|
-| `test_core.py` | Unit tests | ~60 tests |
+| `test_core.py` | Unit tests | ~68 tests |
 | `test_full_e2e.py` | E2E tests (requires running SHS) | ~13 tests |
 
 ## Unit Test Plan (`test_core.py`)
@@ -49,14 +49,24 @@
 - `test_help` — --help returns 0
 - `test_version_subcommand` — version subcommand
 - `test_apps_no_server` — graceful error when no server
+- `test_sql_list_uses_lightweight_fetch` — sql list avoids full plan fetches
+- `test_sql_detail_disables_plan_description` — sql detail avoids plan text fetches
 - `test_sql_plan_json_returns_selected_view` — one-shot sql-plan JSON output
+- `test_sql_plan_json_writes_output_file` — one-shot sql-plan JSON file output
 - `test_sql_plan_dot_writes_output_file` — one-shot sql-plan DOT file output
 - `test_sql_jobs_json_outputs_matched_jobs` — one-shot sql-jobs JSON output
 - `test_sql_jobs_without_referenced_jobs_prints_message` — no-job branch
+- `test_summary_uses_lightweight_sql_fetch` — summary avoids full SQL plan fetches
 
 ### SQL Helper Tests
 - `test_collect_sql_job_ids_deduplicates_and_sorts` — merges success/failed/running IDs
 - `test_fetch_sql_jobs_filters_bulk_job_list` — bulk fetch + filter behavior
+- `test_parse_repl_sql_plan_args_supports_output_and_view` — REPL sql-plan arg parsing
+- `test_parse_repl_sql_plan_args_rejects_invalid_view` — REPL sql-plan validation
+
+### REPL SQL Tests
+- `test_repl_sql_plan_writes_selected_view_to_file` — REPL sql-plan `-o` support
+- `test_repl_sql_plan_rejects_invalid_view` — REPL sql-plan view validation
 
 ## E2E Test Plan (`test_full_e2e.py`)
 

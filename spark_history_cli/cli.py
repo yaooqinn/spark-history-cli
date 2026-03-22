@@ -100,6 +100,73 @@ def _fetch_sql_jobs(client, app_id: str, sql_exec: dict) -> list[dict]:
     return [j for j in all_jobs if j.get("jobId") in target]
 
 
+VALID_SQL_PLAN_VIEWS = {"full", "initial", "final"}
+
+
+def _parse_repl_sql_plan_args(args: list[str]) -> tuple[int, str, bool, str | None]:
+    """Parse REPL sql-plan arguments."""
+    usage = "Usage: sql-plan <execution-id> [--view initial|final|full] [--dot] [-o path]"
+    if not args or not args[0].isdigit():
+        raise ValueError(usage)
+
+    exec_id = int(args[0])
+    view_mode = "full"
+    dot_mode = False
+    output_file: str | None = None
+
+    i = 1
+    while i < len(args):
+        arg = args[i]
+        if arg == "--dot":
+            dot_mode = True
+            i += 1
+        elif arg == "--view":
+            if i + 1 >= len(args):
+                raise ValueError("--view requires one of: full, initial, final")
+            view_mode = args[i + 1].lower()
+            if view_mode not in VALID_SQL_PLAN_VIEWS:
+                raise ValueError("--view must be one of: full, initial, final")
+            i += 2
+        elif arg in ("-o", "--output"):
+            if i + 1 >= len(args):
+                raise ValueError(f"{arg} requires a path")
+            output_file = args[i + 1]
+            i += 2
+        else:
+            raise ValueError(f"Unknown option for sql-plan: {arg}")
+
+    return exec_id, view_mode, dot_mode, output_file
+
+
+def _render_sql_plan(execution_id: int, sql_execution: dict, view_mode: str = "full", dot_mode: bool = False) -> str:
+    """Render a SQL plan as text or Graphviz DOT."""
+    if view_mode not in VALID_SQL_PLAN_VIEWS:
+        raise ValueError("--view must be one of: full, initial, final")
+
+    if dot_mode:
+        return fmt.plan_to_dot(
+            sql_execution.get("nodes", []),
+            sql_execution.get("edges", []),
+            graph_name=f"SQL {execution_id}",
+        )
+
+    parsed = fmt.parse_plan_sections(sql_execution.get("planDescription", ""))
+    if view_mode == "initial":
+        return parsed["initialPlan"]
+    if view_mode == "final":
+        return parsed["finalPlan"]
+    return parsed["fullPlan"]
+
+
+def _emit_sql_plan_output(content: str, output_file: str | None, label: str) -> None:
+    """Write sql-plan output to a file or stdout."""
+    if output_file:
+        Path(output_file).write_text(content, encoding="utf-8")
+        click.echo(f"{label} written to {output_file}")
+    else:
+        click.echo(content)
+
+
 # ── Main CLI group ────────────────────────────────────────────────────
 
 @click.group(invoke_without_command=True)
@@ -326,7 +393,12 @@ def repl(state: CliState):
                 jobs = client.list_jobs(app_id)
                 stages = client.list_stages(app_id)
                 executors = client.list_all_executors(app_id)
-                sqls = client.list_sql(app_id, length=100000)
+                sqls = client.list_sql(
+                    app_id,
+                    details=False,
+                    plan_description=False,
+                    length=100000,
+                )
                 sections = fmt.format_summary(app, env, jobs, stages, executors, sqls)
                 for title, info in sections.items():
                     output_status_block(skin, info, title=title)
@@ -445,41 +517,25 @@ def repl(state: CliState):
             elif cmd == "sql":
                 app_id = state.resolve_app_id(None)
                 if args and args[0].isdigit():
-                    ex = client.get_sql(app_id, int(args[0]))
+                    ex = client.get_sql(app_id, int(args[0]), plan_description=False)
                     info = fmt.format_sql_detail(ex)
                     output_status_block(skin, info, title=f"SQL Execution {args[0]}")
                 else:
-                    sqls = client.list_sql(app_id)
+                    sqls = client.list_sql(app_id, details=False, plan_description=False)
                     headers, rows = fmt.format_sql_list(sqls)
                     output_table(skin, headers, rows)
 
             elif cmd == "sql-plan":
                 app_id = state.resolve_app_id(None)
-                if not args or not args[0].isdigit():
-                    skin.error("Usage: sql-plan <execution-id> [--view initial|final|full] [--dot]")
+                try:
+                    exec_id, view_mode, dot_mode, output_file = _parse_repl_sql_plan_args(args)
+                except ValueError as e:
+                    skin.error(str(e))
                 else:
-                    exec_id = int(args[0])
-                    view = "full"
-                    dot_mode = "--dot" in args
-                    for i, a in enumerate(args[1:], 1):
-                        if a == "--view" and i + 1 < len(args):
-                            view = args[i + 1]
-                    ex = client.get_sql(app_id, exec_id)
-                    if dot_mode:
-                        dot = fmt.plan_to_dot(
-                            ex.get("nodes", []),
-                            ex.get("edges", []),
-                            graph_name=f"SQL {exec_id}",
-                        )
-                        click.echo(dot)
-                    else:
-                        parsed = fmt.parse_plan_sections(ex.get("planDescription", ""))
-                        if view == "initial":
-                            click.echo(parsed["initialPlan"])
-                        elif view == "final":
-                            click.echo(parsed["finalPlan"])
-                        else:
-                            click.echo(parsed["fullPlan"])
+                    ex = client.get_sql(app_id, exec_id, plan_description=False)
+                    content = _render_sql_plan(exec_id, ex, view_mode=view_mode, dot_mode=dot_mode)
+                    label = "DOT file" if dot_mode else "Plan"
+                    _emit_sql_plan_output(content, output_file, label)
 
             elif cmd == "sql-jobs":
                 app_id = state.resolve_app_id(None)
@@ -680,7 +736,12 @@ def cmd_summary(state: CliState):
     jobs = client.list_jobs(app_id)
     stages = client.list_stages(app_id)
     executors = client.list_all_executors(app_id)
-    sqls = client.list_sql(app_id, length=100000)
+    sqls = client.list_sql(
+        app_id,
+        details=False,
+        plan_description=False,
+        length=100000,
+    )
     if state.json_mode:
         sections = fmt.format_summary(app, env, jobs, stages, executors, sqls)
         output_json(sections)
@@ -897,7 +958,7 @@ def cmd_sql(state: CliState, execution_id: int | None, offset: int, length: int)
     client = state.ensure_client()
     app_id = state.resolve_app_id(None)
     if execution_id is not None:
-        data = client.get_sql(app_id, execution_id)
+        data = client.get_sql(app_id, execution_id, plan_description=False)
         if state.json_mode:
             output_json(data)
         else:
@@ -906,7 +967,13 @@ def cmd_sql(state: CliState, execution_id: int | None, offset: int, length: int)
             info = fmt.format_sql_detail(data)
             output_status_block(skin, info, title=f"SQL Execution {execution_id}")
     else:
-        data = client.list_sql(app_id, offset=offset, length=length)
+        data = client.list_sql(
+            app_id,
+            details=False,
+            plan_description=False,
+            offset=offset,
+            length=length,
+        )
         if state.json_mode:
             output_json(data)
         else:
@@ -938,24 +1005,15 @@ def cmd_sql_plan(state: CliState, execution_id: int, view_mode: str, dot_mode: b
     """
     client = state.ensure_client()
     app_id = state.resolve_app_id(None)
-    ex = client.get_sql(app_id, execution_id)
+    ex = client.get_sql(app_id, execution_id, plan_description=False)
 
     if dot_mode:
-        content = fmt.plan_to_dot(
-            ex.get("nodes", []),
-            ex.get("edges", []),
-            graph_name=f"SQL {execution_id}",
-        )
-        if output_file:
-            Path(output_file).write_text(content, encoding="utf-8")
-            click.echo(f"DOT file written to {output_file}")
-        else:
-            click.echo(content)
+        content = _render_sql_plan(execution_id, ex, view_mode=view_mode, dot_mode=True)
+        _emit_sql_plan_output(content, output_file, "DOT file")
         return
 
-    parsed = fmt.parse_plan_sections(ex.get("planDescription", ""))
-
     if state.json_mode:
+        parsed = fmt.parse_plan_sections(ex.get("planDescription", ""))
         result = {
             "executionId": execution_id,
             "isAdaptive": parsed["isAdaptive"],
@@ -968,20 +1026,11 @@ def cmd_sql_plan(state: CliState, execution_id: int, view_mode: str, dot_mode: b
         else:
             result["plan"] = parsed["fullPlan"]
             result["sections"] = parsed["sections"]
-        output_json(result)
+        content = json.dumps(result, indent=2, default=str)
+        _emit_sql_plan_output(content, output_file, "Plan JSON")
     else:
-        if view_mode == "initial":
-            text = parsed["initialPlan"]
-        elif view_mode == "final":
-            text = parsed["finalPlan"]
-        else:
-            text = parsed["fullPlan"]
-
-        if output_file:
-            Path(output_file).write_text(text, encoding="utf-8")
-            click.echo(f"Plan written to {output_file}")
-        else:
-            click.echo(text)
+        text = _render_sql_plan(execution_id, ex, view_mode=view_mode, dot_mode=False)
+        _emit_sql_plan_output(text, output_file, "Plan")
 
 
 @cli.command("sql-jobs")
@@ -1001,7 +1050,7 @@ def cmd_sql_jobs(state: CliState, execution_id: int):
     """
     client = state.ensure_client()
     app_id = state.resolve_app_id(None)
-    ex = client.get_sql(app_id, execution_id)
+    ex = client.get_sql(app_id, execution_id, plan_description=False)
     job_ids = _collect_sql_job_ids(ex)
     if not job_ids:
         click.echo(f"No jobs found for SQL execution {execution_id}.")
