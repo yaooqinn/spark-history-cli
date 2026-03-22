@@ -12,13 +12,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from pathlib import Path
+
 from setuptools import setup, find_packages
+
+
+README = Path(__file__).with_name("README.md").read_text(encoding="utf-8")
 
 setup(
     name="spark-history-cli",
     version="1.4.0",
     description="CLI for querying the Apache Spark History Server REST API",
-    long_description=open("README.md").read(),
+    long_description=README,
     long_description_content_type="text/markdown",
     author="Apache Spark Contributors",
     url="https://github.com/yaooqinn/spark-history-cli",

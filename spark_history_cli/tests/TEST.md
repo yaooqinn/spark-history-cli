@@ -4,8 +4,8 @@
 
 | File | Type | Planned Tests |
 |------|------|---------------|
-| `test_core.py` | Unit tests | ~25 tests |
-| `test_full_e2e.py` | E2E tests (requires running SHS) | ~10 tests |
+| `test_core.py` | Unit tests | ~60 tests |
+| `test_full_e2e.py` | E2E tests (requires running SHS) | ~13 tests |
 
 ## Unit Test Plan (`test_core.py`)
 
@@ -33,6 +33,9 @@
 - `test_format_stage_list` — table output
 - `test_format_executor_list` — table output
 - `test_format_sql_list` — table output
+- `test_parse_plan_sections_non_adaptive_uses_full_plan` — non-AQE fallback
+- `test_parse_plan_sections_adaptive_splits_initial_and_final` — AQE section splitting
+- `test_plan_to_dot_escapes_and_truncates_labels` — DOT export shape and escaping
 - `test_duration_formatting` — ms, s, m, h
 - `test_bytes_formatting` — B, KB, MB, GB
 
@@ -46,6 +49,14 @@
 - `test_help` — --help returns 0
 - `test_version_subcommand` — version subcommand
 - `test_apps_no_server` — graceful error when no server
+- `test_sql_plan_json_returns_selected_view` — one-shot sql-plan JSON output
+- `test_sql_plan_dot_writes_output_file` — one-shot sql-plan DOT file output
+- `test_sql_jobs_json_outputs_matched_jobs` — one-shot sql-jobs JSON output
+- `test_sql_jobs_without_referenced_jobs_prints_message` — no-job branch
+
+### SQL Helper Tests
+- `test_collect_sql_job_ids_deduplicates_and_sorts` — merges success/failed/running IDs
+- `test_fetch_sql_jobs_filters_bulk_job_list` — bulk fetch + filter behavior
 
 ## E2E Test Plan (`test_full_e2e.py`)
 

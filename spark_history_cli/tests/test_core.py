@@ -32,7 +32,7 @@ from click.testing import CliRunner
 from spark_history_cli.core.client import SparkHistoryClient, HistoryServerError
 from spark_history_cli.core.session import Session
 from spark_history_cli.core import formatters as fmt
-from spark_history_cli.cli import cli
+from spark_history_cli.cli import cli, _collect_sql_job_ids, _fetch_sql_jobs
 
 
 # ── Sample API Responses ──────────────────────────────────────────────
@@ -126,6 +126,34 @@ SAMPLE_SQL = {
     "failedJobIds": [],
     "nodes": [],
     "edges": [],
+}
+
+SAMPLE_SQL_PLAN = {
+    "id": 4,
+    "status": "COMPLETED",
+    "description": "Adaptive query",
+    "duration": 5000,
+    "submissionTime": "2025-01-01T12:00:05.000GMT",
+    "runningJobIds": [9],
+    "successJobIds": [1, 2],
+    "failedJobIds": [2, 3],
+    "planDescription": "\n".join([
+        "== Parsed Logical Plan ==",
+        "Project [count(1)]",
+        "== Initial Plan ==",
+        "HashAggregate(keys=[], functions=[count(1)])",
+        "+- Exchange SinglePartition",
+        "== Final Plan ==",
+        "AdaptiveSparkPlan isFinalPlan=true",
+        "+- HashAggregate(keys=[], functions=[count(1)])",
+    ]),
+    "nodes": [
+        {"nodeId": 1, "nodeName": 'Scan "orders"'},
+        {"nodeId": 2, "nodeName": "Filter " + ("x" * 90)},
+    ],
+    "edges": [
+        {"fromId": 1, "toId": 2},
+    ],
 }
 
 SAMPLE_ENV = {
@@ -225,6 +253,26 @@ class TestClient:
         result = client.get_sql("app-1", 0)
         assert result["id"] == 0
 
+    def test_list_sql_passes_flags_and_paging(self):
+        client = self._mock_client([SAMPLE_SQL])
+        client.list_sql("app-1", details=False, plan_description=False, offset=5, length=7)
+        call_args = client._session.get.call_args
+        assert call_args[1]["params"] == {
+            "details": "false",
+            "planDescription": "false",
+            "offset": 5,
+            "length": 7,
+        }
+
+    def test_get_sql_passes_flags(self):
+        client = self._mock_client(SAMPLE_SQL)
+        client.get_sql("app-1", 4, details=False, plan_description=False)
+        call_args = client._session.get.call_args
+        assert call_args[1]["params"] == {
+            "details": "false",
+            "planDescription": "false",
+        }
+
     def test_list_rdds(self):
         client = self._mock_client([])
         result = client.list_rdds("app-1")
@@ -306,6 +354,30 @@ class TestFormatters:
     def test_format_sql_detail(self):
         info = fmt.format_sql_detail(SAMPLE_SQL)
         assert info["Status"] == "COMPLETED"
+
+    def test_parse_plan_sections_non_adaptive_uses_full_plan(self):
+        plan_text = "*(1) HashAggregate(keys=[], functions=[count(1)])"
+        parsed = fmt.parse_plan_sections(plan_text)
+        assert parsed["isAdaptive"] is False
+        assert parsed["sections"] == []
+        assert parsed["initialPlan"] == plan_text
+        assert parsed["finalPlan"] == plan_text
+
+    def test_parse_plan_sections_adaptive_splits_initial_and_final(self):
+        parsed = fmt.parse_plan_sections(SAMPLE_SQL_PLAN["planDescription"])
+        assert parsed["isAdaptive"] is True
+        assert len(parsed["sections"]) == 2
+        assert parsed["sections"][0]["kind"] == "initial"
+        assert "HashAggregate" in parsed["initialPlan"]
+        assert "AdaptiveSparkPlan isFinalPlan=true" in parsed["finalPlan"]
+        assert parsed["fullPlan"] == SAMPLE_SQL_PLAN["planDescription"]
+
+    def test_plan_to_dot_escapes_and_truncates_labels(self):
+        dot = fmt.plan_to_dot(SAMPLE_SQL_PLAN["nodes"], SAMPLE_SQL_PLAN["edges"], graph_name="SQL 4")
+        assert 'digraph "SQL 4"' in dot
+        assert 'Scan \\"orders\\" (#1)' in dot
+        assert "..." in dot
+        assert "n1 -> n2;" in dot
 
     def test_format_environment(self):
         info = fmt.format_environment(SAMPLE_ENV)
@@ -484,3 +556,95 @@ class TestCLIOptions:
                 result = runner.invoke(cli, ["--basic-auth-user", "alice", "version"])
         assert result.exit_code == 0
         prompt_mock.assert_called_once_with("Basic Auth password", hide_input=True)
+
+
+class TestSQLHelpers:
+    def test_collect_sql_job_ids_deduplicates_and_sorts(self):
+        assert _collect_sql_job_ids(SAMPLE_SQL_PLAN) == [1, 2, 3, 9]
+
+    def test_fetch_sql_jobs_filters_bulk_job_list(self):
+        client = MagicMock()
+        client.list_jobs.return_value = [
+            {"jobId": 2, "name": "two"},
+            {"jobId": 8, "name": "eight"},
+            {"jobId": 3, "name": "three"},
+        ]
+        jobs = _fetch_sql_jobs(client, "app-1", SAMPLE_SQL_PLAN)
+        assert [job["jobId"] for job in jobs] == [2, 3]
+        client.list_jobs.assert_called_once_with("app-1")
+
+
+class TestSQLCLI:
+    def test_sql_plan_json_returns_selected_view(self):
+        runner = CliRunner()
+        mock_client = MagicMock()
+        mock_client.get_sql.return_value = SAMPLE_SQL_PLAN
+
+        with patch("spark_history_cli.cli.CliState.ensure_client", return_value=mock_client):
+            result = runner.invoke(
+                cli,
+                ["--app-id", "app-1", "--json", "sql-plan", "4", "--view", "final"],
+            )
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["executionId"] == 4
+        assert data["isAdaptive"] is True
+        assert data["sectionCount"] == 2
+        assert data["plan"] == fmt.parse_plan_sections(SAMPLE_SQL_PLAN["planDescription"])["finalPlan"]
+        assert "sections" not in data
+
+    def test_sql_plan_dot_writes_output_file(self):
+        runner = CliRunner()
+        mock_client = MagicMock()
+        mock_client.get_sql.return_value = SAMPLE_SQL_PLAN
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = os.path.join(tmpdir, "plan.dot")
+            with patch("spark_history_cli.cli.CliState.ensure_client", return_value=mock_client):
+                result = runner.invoke(
+                    cli,
+                    ["--app-id", "app-1", "sql-plan", "4", "--dot", "-o", output_path],
+                )
+
+            assert result.exit_code == 0
+            assert f"DOT file written to {output_path}" in result.output
+            with open(output_path, encoding="utf-8") as f:
+                dot = f.read()
+            assert 'digraph "SQL 4"' in dot
+            assert "n1 -> n2;" in dot
+
+    def test_sql_jobs_json_outputs_matched_jobs(self):
+        runner = CliRunner()
+        mock_client = MagicMock()
+        mock_client.get_sql.return_value = SAMPLE_SQL_PLAN
+        mock_client.list_jobs.return_value = [
+            {"jobId": 1, "status": "SUCCEEDED"},
+            {"jobId": 2, "status": "FAILED"},
+            {"jobId": 7, "status": "SKIPPED"},
+            {"jobId": 9, "status": "RUNNING"},
+        ]
+
+        with patch("spark_history_cli.cli.CliState.ensure_client", return_value=mock_client):
+            result = runner.invoke(
+                cli,
+                ["--app-id", "app-1", "--json", "sql-jobs", "4"],
+            )
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert [job["jobId"] for job in data] == [1, 2, 9]
+
+    def test_sql_jobs_without_referenced_jobs_prints_message(self):
+        runner = CliRunner()
+        mock_client = MagicMock()
+        mock_client.get_sql.return_value = {**SAMPLE_SQL_PLAN, "runningJobIds": [], "successJobIds": [], "failedJobIds": []}
+
+        with patch("spark_history_cli.cli.CliState.ensure_client", return_value=mock_client):
+            result = runner.invoke(
+                cli,
+                ["--app-id", "app-1", "sql-jobs", "4"],
+            )
+
+        assert result.exit_code == 0
+        assert "No jobs found for SQL execution 4." in result.output
