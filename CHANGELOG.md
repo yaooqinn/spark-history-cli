@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.5.0] - 2026-03-22
+
+### Added
+- **14 new diagnostic rules** in spark-advisor, inspired by DataFlint's alert system:
+  - SQL-level: small files read/written, broadcast too large, SortMergeJoin→BroadcastHashJoin, large cross join, long filter conditions, full scan on partitioned/clustered tables, large partition size
+  - Resource utilization: wasted cores, executor/driver memory over/under-provisioned
+  - Lakehouse: Iceberg inefficient replace, Delta Lake full scan detection
+- **Installation section** in spark-history-cli skill
+- **Troubleshooting table** in spark-history-cli skill (6 common issues)
+- **Quick Start** section in spark-advisor skill
+- **Sample scripts**: `find-slowest-stage.sh` (spark-history-cli), `compare-apps.sh` (spark-advisor)
+
+### Changed
+- Optimized SQL fetch paths for better performance
+- Improved SQL plan tests and encoding setup
+
+### Documentation
+- Added Data Availability note: all diagnostics use standard SHS REST API, no external plugins required
+- Added Apache 2.0 LICENSE file and headers to all .py files
+
 ## [1.4.0] - 2025-03-20
 
 ### Added

@@ -21,7 +21,7 @@ README = Path(__file__).with_name("README.md").read_text(encoding="utf-8")
 
 setup(
     name="spark-history-cli",
-    version="1.4.0",
+    version="1.5.0",
     description="CLI for querying the Apache Spark History Server REST API",
     long_description=README,
     long_description_content_type="text/markdown",
